@@ -15,6 +15,35 @@ W, H, FPS = 1920, 1080, 30
 GROUND = 935
 XFADE = 0.45  # thời gian chuyển cảnh (giây)
 FONT = "DejaVu Sans"
+NO_SPACE_LANGS = {"zh", "ja", "th"}
+LANG = "vi"
+
+# Bố cục cho từng tỉ lệ khung hình
+LAYOUTS = {
+    "16:9": dict(size=(1920, 1080), ground=935, scale=1.25, char_x=(470, 1450), card=((1290, 360), (630, 360)),
+                 card_w=760, font=70, thumb=(1280, 720), still=(430, 1.55, 60)),
+    "9:16": dict(size=(1080, 1920), ground=1560, scale=1.55, char_x=(540, 540), card=((540, 430), (540, 430)),
+                 card_w=820, font=78, thumb=(720, 1280), still=(540, 1.45, 260)),
+    "1:1": dict(size=(1080, 1080), ground=950, scale=1.0, char_x=(290, 790), card=((730, 300), (350, 300)),
+                card_w=520, font=58, thumb=(1080, 1080), still=(300, 1.25, 40)),
+}
+L = LAYOUTS["16:9"]
+
+
+def configure(aspect="16:9", lang="vi", font="DejaVu Sans"):
+    """Đặt tỉ lệ khung hình, ngôn ngữ và font cho toàn bộ module."""
+    global W, H, GROUND, L, LANG, FONT
+    L = LAYOUTS.get(aspect, LAYOUTS["16:9"])
+    W, H = L["size"]
+    GROUND = L["ground"]
+    LANG, FONT = lang, font
+
+
+def tokens(text):
+    """Tách chữ để xuống dòng; tiếng Trung/Nhật/Thái không có dấu cách nên tách theo ký tự."""
+    if LANG in NO_SPACE_LANGS:
+        return list(text), ""
+    return text.split(), " "
 
 
 def _ease_out_back(t):
@@ -85,13 +114,14 @@ def _keyword_card(ctx, text, cx, cy, t, accent):
     s = max(0.0, _ease_out_back(k))
     ctx.save()
     ctx.select_font_face(FONT, cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_BOLD)
-    size = 70
+    size = L["font"]
     ctx.set_font_size(size)
     # tự xuống dòng nếu dài
-    words, lines, cur = text.upper().split(), [], ""
+    words, sep = tokens(text.upper())
+    lines, cur = [], ""
     for w in words:
-        test = (cur + " " + w).strip()
-        if ctx.text_extents(test).x_advance > 760 and cur:
+        test = (cur + sep + w).strip() if sep else cur + w
+        if ctx.text_extents(test).x_advance > L["card_w"] and cur:
             lines.append(cur)
             cur = w
         else:
@@ -175,8 +205,8 @@ def render_video(scenes, durations, backgrounds, voice_wav, out_mp4, style="dood
         i = max(j for j, s0 in enumerate(starts) if s0 <= t + 1e-9)
         sc, ts, dur = scenes[i], t - starts[i], durations[i]
         side = sc.get("side", "left")
-        char_x = 470 if side == "left" else W - 470
-        card_x = 1290 if side == "left" else 630
+        char_x = L["char_x"][0 if side == "left" else 1]
+        card_x, card_y = L["card"][0 if side == "left" else 1]
 
         # nền + chuyển cảnh mờ dần
         ctx.set_source_rgb(1, 1, 1)
@@ -211,10 +241,10 @@ def render_video(scenes, durations, backgrounds, voice_wav, out_mp4, style="dood
         pose["tilt"] += m * 3 * math.sin(t * 6)
 
         _soft_spot(ctx, x, GROUND)
-        draw_character(ctx, _mirror(pose) if side == "right" else pose, x, GROUND, 1.25, style,
+        draw_character(ctx, _mirror(pose) if side == "right" else pose, x, GROUND, L["scale"], style,
                        {"expression": sc.get("expression", "happy"), "mouth": m, "blink": blinker.value(t)})
 
-        _keyword_card(ctx, sc.get("keyword", ""), card_x, 360, ts, ACCENTS[i % len(ACCENTS)])
+        _keyword_card(ctx, sc.get("keyword", ""), card_x, card_y, ts, ACCENTS[i % len(ACCENTS)])
 
         # mờ dần ở đầu và cuối video
         edge = min(t, total - t)
@@ -244,9 +274,10 @@ def render_still(background, out_png, style="doodle", side="left"):
     surf = cairo.ImageSurface(cairo.FORMAT_ARGB32, W, H)
     ctx = cairo.Context(surf)
     _paint_bg(ctx, _load_bg(background), 0, 1, 1)
-    x = 430 if side == "left" else W - 430
-    _soft_spot(ctx, x, GROUND + 60)
+    sx, sscale, sdy = L["still"]
+    x = sx if side == "left" else W - sx
+    _soft_spot(ctx, x, GROUND + sdy)
     pose = pose_at("point_up", 0.2)
-    draw_character(ctx, pose, x, GROUND + 60, 1.55, style, {"expression": "excited", "mouth": 0.7})
+    draw_character(ctx, pose, x, GROUND + sdy, sscale, style, {"expression": "excited", "mouth": 0.7})
     surf.write_to_png(str(out_png))
     return out_png

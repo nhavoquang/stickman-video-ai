@@ -6,48 +6,77 @@ on:
       topic:
         description: "Chủ đề video"
         required: true
-      scenes:
-        description: "Số cảnh (8 cảnh ≈ 1-1,5 phút)"
-        default: "8"
+      language:
+        description: "Ngôn ngữ (vi Việt, en Anh, ja Nhật, ko Hàn, zh Trung, th Thái, id Indo, es, fr, de, pt, hi)"
+        type: choice
+        options: [vi, en, ja, ko, zh, th, id, es, fr, de, pt, hi]
+        default: vi
+      aspect:
+        description: "Khung hình: 16:9 ngang (YouTube/laptop), 9:16 dọc (Shorts/TikTok/Reels), 1:1 vuông"
+        type: choice
+        options: ["16:9", "9:16", "1:1"]
+        default: "16:9"
+      duration:
+        description: "Độ dài khoảng (giây). Shorts nên 30-60"
+        type: choice
+        options: ["30", "45", "60", "90", "120", "180", "300", "600"]
+        default: "60"
       voice:
         description: "Giọng đọc"
         type: choice
         options: [nu, nam]
         default: nu
       style:
-        description: "Kiểu nhân vật: doodle = nét đen cổ điển, shirt = áo xanh nền màu"
+        description: "Nhân vật: doodle = nét đen cổ điển, shirt = áo xanh nền màu"
         type: choice
         options: [doodle, shirt]
         default: doodle
       rate:
-        description: "Tốc độ đọc"
+        description: "Tốc độ đọc (vd -10%, +0%, +15%)"
         default: "+5%"
+      subtitles:
+        description: "Phụ đề"
+        type: choice
+        options: ["on", "off"]
+        default: "on"
+      notes:
+        description: "Yêu cầu thêm cho kịch bản (vd: hài hước, cho trẻ em, có số liệu) - có thể bỏ trống"
+        required: false
+        default: ""
 
 jobs:
   video:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: pip
-      - name: Cài ffmpeg và font
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg fonts-dejavu-core libcairo2-dev pkg-config python3-dev
+      - name: Cài ffmpeg, cairo và font đa ngôn ngữ
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg libcairo2-dev pkg-config python3-dev \
+            fonts-dejavu-core fonts-noto-core fonts-noto-cjk
       - run: pip install -r requirements.txt
       - name: Tạo video
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           POLLINATIONS_TOKEN: ${{ secrets.POLLINATIONS_TOKEN }}
           TOPIC: ${{ inputs.topic }}
-          SCENES: ${{ inputs.scenes }}
+          LANGUAGE: ${{ inputs.language }}
+          ASPECT: ${{ inputs.aspect }}
+          DURATION: ${{ inputs.duration }}
           VOICE: ${{ inputs.voice }}
-          RATE: ${{ inputs.rate }}
           STYLE: ${{ inputs.style }}
+          RATE: ${{ inputs.rate }}
+          SUBTITLES: ${{ inputs.subtitles }}
+          NOTES: ${{ inputs.notes }}
         run: >
-          python src/main.py
-          --topic "$TOPIC" --scenes "$SCENES" --voice "$VOICE" --rate="$RATE" --style "$STYLE"
+          python src/main.py --topic "$TOPIC" --language "$LANGUAGE" --aspect "$ASPECT"
+          --duration "$DURATION" --voice "$VOICE" --style "$STYLE" --rate="$RATE"
+          --subtitles "$SUBTITLES" --notes="$NOTES"
       - name: Tải video về
         uses: actions/upload-artifact@v4
         with:

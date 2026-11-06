@@ -1,4 +1,4 @@
-"""Bước 1: dùng Gemini (gói free) viết kịch bản video người que, chia cảnh."""
+"""Bước 1: dùng Gemini (gói free) viết kịch bản video người que, chia cảnh, nhiều ngôn ngữ."""
 import json
 import os
 import re
@@ -8,17 +8,22 @@ import requests
 
 API_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
-PROMPT = """Bạn là biên kịch cho một kênh YouTube hoạt hình người que (stick figure) bằng tiếng Việt.
+PROMPT = """Bạn là biên kịch cho một kênh YouTube hoạt hình người que (stick figure).
 Mỗi video có MỘT nhân vật người que dễ thương làm người dẫn chuyện, đứng nói chuyện với khán giả.
 Viết kịch bản cho video về chủ đề: "{topic}".
 
+NGÔN NGỮ: toàn bộ "title", "description", "tags", "narration", "keyword" phải viết bằng {language}.
+Định dạng: {format_note}
+Yêu cầu thêm của người dùng: {notes}
+
 Yêu cầu:
-- Đúng {scenes} cảnh. Mỗi cảnh có lời dẫn tiếng Việt tự nhiên, 1-3 câu (khoảng 20-45 từ).
+- Đúng {scenes} cảnh, tổng thời lượng đọc khoảng {duration} giây.
+  Mỗi cảnh có lời dẫn tự nhiên, đọc trong khoảng {scene_sec} giây (tiếng Việt/Anh ≈ {words} từ).
 - Cảnh 1 là câu mở đầu gây tò mò (hook). Cảnh cuối kêu gọi like và đăng ký kênh.
 - Nội dung phải có giá trị thật: thông tin đúng, có ví dụ cụ thể, không lan man.
 - "background_prompt": TIẾNG ANH, mô tả cảnh NỀN minh hoạ nội dung (đồ vật, nơi chốn, sơ đồ đơn giản),
   TUYỆT ĐỐI không có người, không có chữ. Để trống khoảng giữa khung hình.
-- "keyword": 2-5 từ tiếng Việt nổi bật hiện trên màn hình (ý chính của cảnh).
+- "keyword": 2-5 từ nổi bật (cùng ngôn ngữ với lời dẫn) hiện trên màn hình (ý chính của cảnh).
 - "action" của nhân vật, chọn một: {actions}.
   Gợi ý: wave cho chào hỏi/kết, think khi đặt câu hỏi, point/point_up khi giới thiệu thông tin,
   explain/talk khi giải thích, excited khi bất ngờ vui, surprised khi sốc, shrug khi "không biết",
@@ -67,13 +72,19 @@ def available_models(key: str) -> list:
     return flash
 
 
-def generate_script(topic: str, scenes: int, model: str) -> dict:
+def generate_script(topic: str, scenes: int, model: str, language: str = "tiếng Việt",
+                    duration: int = 60, vertical: bool = False, notes: str = "") -> dict:
     key = os.environ.get("GEMINI_API_KEY", "").strip()
     if not key:
         raise SystemExit("Thiếu GEMINI_API_KEY. Thêm nó vào GitHub Secrets.")
 
     body = {
-        "contents": [{"parts": [{"text": PROMPT.format(topic=topic, scenes=scenes, actions=", ".join(ACTIONS))}]}],
+        "contents": [{"parts": [{"text": PROMPT.format(
+            topic=topic, scenes=scenes, actions=", ".join(ACTIONS), language=language,
+            duration=duration, scene_sec=round(duration / scenes), words=round(duration / scenes * 2.6),
+            notes=notes.strip() or "không có",
+            format_note=("YouTube Shorts dọc, nhịp nhanh, câu ngắn, hook mạnh trong 2 giây đầu" if vertical
+                         else "video YouTube ngang thông thường"))}]}],
         "generationConfig": {"responseMimeType": "application/json", "temperature": 0.9},
     }
     models = ([model] if model and model != "auto" else []) + available_models(key)

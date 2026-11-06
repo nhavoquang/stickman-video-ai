@@ -14,13 +14,26 @@ Hai kiểu nhân vật: `doodle` (nét đen cổ điển) và `shirt` (áo xanh,
 
 ## Tạo video
 1. Tab **Actions** → **Tạo video người que** → **Run workflow**.
-2. Nhập chủ đề, số cảnh, giọng đọc (nữ/nam), kiểu nhân vật → **Run**.
-3. Chạy xong, mở lần chạy đó, tải **video** ở mục Artifacts (gồm file MP4, thumbnail và file JSON chứa tiêu đề, mô tả, tag).
+2. Điền các tuỳ chọn rồi bấm **Run**:
+
+| Tuỳ chọn | Ý nghĩa |
+|---|---|
+| Chủ đề | Nội dung video |
+| Ngôn ngữ | vi, en, ja, ko, zh, th, id, es, fr, de, pt, hi (lời dẫn, phụ đề, giọng đọc đều theo ngôn ngữ này) |
+| Khung hình | `16:9` ngang (YouTube, laptop), `9:16` dọc (Shorts, TikTok, Reels), `1:1` vuông |
+| Độ dài | 30 giây đến 10 phút (số cảnh tự tính theo độ dài) |
+| Giọng đọc | nữ / nam |
+| Nhân vật | `doodle` nét đen, `shirt` áo xanh |
+| Tốc độ đọc | ví dụ `-10%`, `+0%`, `+15%` |
+| Phụ đề | bật / tắt |
+| Yêu cầu thêm | ví dụ "hài hước", "cho trẻ em", "nhiều số liệu" |
+
+3. Chạy xong, mở lần chạy đó, tải **video** ở mục Artifacts (gồm file MP4, thumbnail và file JSON chứa tiêu đề, mô tả, tag). Video dọc có thêm `#Shorts` trong mô tả.
 
 ## Chạy trên máy (tuỳ chọn)
 ```bash
 pip install -r requirements.txt   # cần ffmpeg
-GEMINI_API_KEY=... python src/main.py --topic "Vì sao bầu trời màu xanh" --scenes 8 --voice nu
+GEMINI_API_KEY=... python src/main.py --topic "Vì sao bầu trời màu xanh" --duration 60 --aspect 9:16 --language vi
 # Test không cần mạng:
 python src/main.py --script-file examples/sample_script.json --offline
 ```
