@@ -30,7 +30,7 @@ def main():
     p.add_argument("--scenes", type=int, default=8)
     p.add_argument("--voice", default="nu", help="nu | nam | tên giọng Edge TTS")
     p.add_argument("--rate", default="+5%", help="Tốc độ đọc, ví dụ +10%")
-    p.add_argument("--model", default="gemini-2.5-flash")
+    p.add_argument("--model", default="auto", help="auto = tự chọn model Gemini mới nhất")
     p.add_argument("--script-file", help="Dùng kịch bản JSON có sẵn thay vì gọi Gemini")
     p.add_argument("--out", default="output")
     p.add_argument("--offline", action="store_true", help="Chỉ để test: không gọi mạng")

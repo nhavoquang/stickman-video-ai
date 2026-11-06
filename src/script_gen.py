@@ -1,6 +1,7 @@
 """Bước 1: dùng Gemini (gói free) viết kịch bản video người que, chia cảnh."""
 import json
 import os
+import re
 import time
 
 import requests
@@ -31,8 +32,33 @@ Chỉ trả về JSON đúng dạng sau:
 MOTIONS = {"zoom_in", "zoom_out", "pan_left", "pan_right", "shake"}
 
 
+def available_models(key: str) -> list:
+    """Hỏi Google danh sách model đang có, ưu tiên bản flash ổn định mới nhất."""
+    try:
+        r = requests.get("https://generativelanguage.googleapis.com/v1beta/models",
+                         params={"key": key, "pageSize": 200}, timeout=60)
+        if r.status_code in (400, 401, 403):
+            raise SystemExit(f"GEMINI_API_KEY không hợp lệ: HTTP {r.status_code} {r.text[:300]}")
+        r.raise_for_status()
+        names = [m["name"].split("/", 1)[1] for m in r.json().get("models", [])
+                 if "generateContent" in m.get("supportedGenerationMethods", [])]
+    except requests.RequestException as e:
+        print(f"[script] không lấy được danh sách model: {e}")
+        return []
+    flash = [n for n in names if "flash" in n and not any(
+        b in n for b in ("image", "tts", "live", "audio", "embedding", "thinking", "exp"))]
+
+    def rank(n):
+        ver = re.findall(r"gemini-(\d+(?:\.\d+)?)", n)
+        return (float(ver[0]) if ver else 0, "preview" not in n, "lite" not in n, "latest" in n)
+
+    flash.sort(key=rank, reverse=True)
+    print(f"[script] model khả dụng: {flash[:6]}")
+    return flash
+
+
 def generate_script(topic: str, scenes: int, model: str) -> dict:
-    key = os.environ.get("GEMINI_API_KEY")
+    key = os.environ.get("GEMINI_API_KEY", "").strip()
     if not key:
         raise SystemExit("Thiếu GEMINI_API_KEY. Thêm nó vào GitHub Secrets.")
 
@@ -40,26 +66,35 @@ def generate_script(topic: str, scenes: int, model: str) -> dict:
         "contents": [{"parts": [{"text": PROMPT.format(topic=topic, scenes=scenes)}]}],
         "generationConfig": {"responseMimeType": "application/json", "temperature": 0.9},
     }
-    # Thử model chính, nếu hết hạn mức thì lùi sang model nhẹ hơn.
-    models = [model] + [m for m in ("gemini-2.5-flash", "gemini-2.5-flash-lite") if m != model]
-    last_err = None
+    models = ([model] if model and model != "auto" else []) + available_models(key)
+    models += ["gemini-flash-latest", "gemini-flash-lite-latest"]
+    models = list(dict.fromkeys(models))
+    errors = []
     for m in models:
-        for attempt in range(4):
+        for attempt in range(3):
             try:
-                r = requests.post(API_URL.format(model=m), params={"key": key}, json=body, timeout=120)
+                r = requests.post(API_URL.format(model=m), params={"key": key}, json=body, timeout=180)
+                if r.status_code == 404:
+                    errors.append(f"{m}: không tồn tại")
+                    break
                 if r.status_code in (429, 500, 503):
-                    last_err = f"{m}: HTTP {r.status_code} {r.text[:200]}"
-                    time.sleep(10 * (attempt + 1))
+                    errors.append(f"{m}: HTTP {r.status_code} {r.text[:200]}")
+                    print(f"[script] {errors[-1]}")
+                    time.sleep(15 * (attempt + 1))
                     continue
-                r.raise_for_status()
+                if not r.ok:
+                    errors.append(f"{m}: HTTP {r.status_code} {r.text[:300]}")
+                    print(f"[script] {errors[-1]}")
+                    break
                 text = r.json()["candidates"][0]["content"]["parts"][0]["text"]
                 data = _clean(json.loads(text))
                 print(f"[script] {m}: {len(data['scenes'])} cảnh — {data['title']}")
                 return data
-            except (requests.RequestException, KeyError, ValueError) as e:
-                last_err = f"{m}: {e}"
+            except (requests.RequestException, KeyError, IndexError, ValueError) as e:
+                errors.append(f"{m}: {e}")
+                print(f"[script] {errors[-1]}")
                 time.sleep(5)
-    raise SystemExit(f"Gemini lỗi: {last_err}")
+    raise SystemExit("Gemini lỗi:\n" + "\n".join(errors))
 
 
 def _clean(data: dict) -> dict:
