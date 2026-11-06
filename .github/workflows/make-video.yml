@@ -14,6 +14,11 @@ on:
         type: choice
         options: [nu, nam]
         default: nu
+      style:
+        description: "Kiểu nhân vật: doodle = nét đen cổ điển, shirt = áo xanh nền màu"
+        type: choice
+        options: [doodle, shirt]
+        default: doodle
       rate:
         description: "Tốc độ đọc"
         default: "+5%"
@@ -34,12 +39,15 @@ jobs:
       - name: Tạo video
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          POLLINATIONS_TOKEN: ${{ secrets.POLLINATIONS_TOKEN }}
+          TOPIC: ${{ inputs.topic }}
+          SCENES: ${{ inputs.scenes }}
+          VOICE: ${{ inputs.voice }}
+          RATE: ${{ inputs.rate }}
+          STYLE: ${{ inputs.style }}
         run: >
           python src/main.py
-          --topic "${{ inputs.topic }}"
-          --scenes "${{ inputs.scenes }}"
-          --voice "${{ inputs.voice }}"
-          --rate "${{ inputs.rate }}"
+          --topic "$TOPIC" --scenes "$SCENES" --voice "$VOICE" --rate="$RATE" --style "$STYLE"
       - name: Tải video về
         uses: actions/upload-artifact@v4
         with:

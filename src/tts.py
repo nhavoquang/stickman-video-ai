@@ -11,7 +11,7 @@ def synthesize(text: str, out: Path, voice: str, rate: str = "+5%", offline: boo
         # Chỉ để test: tạo âm thanh im lặng dài theo số từ.
         dur = max(2.5, len(text.split()) * 0.32)
         subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i",
-                        "anullsrc=r=24000:cl=mono", "-t", f"{dur:.2f}", str(out)], check=True)
+                        "sine=frequency=180:sample_rate=24000,tremolo=f=4:d=0.95,volume=0.3", "-t", f"{dur:.2f}", str(out)], check=True)
         return audio_duration(out)
 
     import edge_tts

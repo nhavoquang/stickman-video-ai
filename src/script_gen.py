@@ -9,15 +9,22 @@ import requests
 API_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
 PROMPT = """Bạn là biên kịch cho một kênh YouTube hoạt hình người que (stick figure) bằng tiếng Việt.
+Mỗi video có MỘT nhân vật người que dễ thương làm người dẫn chuyện, đứng nói chuyện với khán giả.
 Viết kịch bản cho video về chủ đề: "{topic}".
 
 Yêu cầu:
 - Đúng {scenes} cảnh. Mỗi cảnh có lời dẫn tiếng Việt tự nhiên, 1-3 câu (khoảng 20-45 từ).
 - Cảnh 1 là câu mở đầu gây tò mò (hook). Cảnh cuối kêu gọi like và đăng ký kênh.
 - Nội dung phải có giá trị thật: thông tin đúng, có ví dụ cụ thể, không lan man.
-- "image_prompt" viết bằng TIẾNG ANH, mô tả MỘT khung hình đơn giản với nhân vật người que,
-  hành động rõ ràng, ít chi tiết. Không yêu cầu chữ trong ảnh.
-- "motion" chọn một trong: zoom_in, zoom_out, pan_left, pan_right, shake (shake dùng cho cảnh kịch tính).
+- "background_prompt": TIẾNG ANH, mô tả cảnh NỀN minh hoạ nội dung (đồ vật, nơi chốn, sơ đồ đơn giản),
+  TUYỆT ĐỐI không có người, không có chữ. Để trống khoảng giữa khung hình.
+- "keyword": 2-5 từ tiếng Việt nổi bật hiện trên màn hình (ý chính của cảnh).
+- "action" của nhân vật, chọn một: {actions}.
+  Gợi ý: wave cho chào hỏi/kết, think khi đặt câu hỏi, point/point_up khi giới thiệu thông tin,
+  explain/talk khi giải thích, excited khi bất ngờ vui, surprised khi sốc, shrug khi "không biết",
+  sad khi chuyện buồn, walk khi chuyển chủ đề. Đổi hành động giữa các cảnh cho sinh động.
+- "expression": một trong happy, neutral, excited, surprised, sad, thinking, angry.
+- "side": "left" hoặc "right" (vị trí nhân vật), thỉnh thoảng đổi bên.
 
 Chỉ trả về JSON đúng dạng sau:
 {{
@@ -25,11 +32,14 @@ Chỉ trả về JSON đúng dạng sau:
   "description": "mô tả YouTube 2-4 câu",
   "tags": ["tag1", "tag2", "tag3"],
   "scenes": [
-    {{"narration": "...", "image_prompt": "...", "motion": "zoom_in"}}
+    {{"narration": "...", "background_prompt": "...", "keyword": "...", "action": "wave",
+      "expression": "happy", "side": "left"}}
   ]
 }}"""
 
-MOTIONS = {"zoom_in", "zoom_out", "pan_left", "pan_right", "shake"}
+from character import NAMES as ACTIONS
+
+EXPRESSIONS = {"happy", "neutral", "excited", "surprised", "sad", "thinking", "angry"}
 
 
 def available_models(key: str) -> list:
@@ -63,7 +73,7 @@ def generate_script(topic: str, scenes: int, model: str) -> dict:
         raise SystemExit("Thiếu GEMINI_API_KEY. Thêm nó vào GitHub Secrets.")
 
     body = {
-        "contents": [{"parts": [{"text": PROMPT.format(topic=topic, scenes=scenes)}]}],
+        "contents": [{"parts": [{"text": PROMPT.format(topic=topic, scenes=scenes, actions=", ".join(ACTIONS))}]}],
         "generationConfig": {"responseMimeType": "application/json", "temperature": 0.9},
     }
     models = ([model] if model and model != "auto" else []) + available_models(key)
@@ -71,16 +81,16 @@ def generate_script(topic: str, scenes: int, model: str) -> dict:
     models = list(dict.fromkeys(models))
     errors = []
     for m in models:
-        for attempt in range(3):
+        for attempt in range(2):
             try:
-                r = requests.post(API_URL.format(model=m), params={"key": key}, json=body, timeout=180)
+                r = requests.post(API_URL.format(model=m), params={"key": key}, json=body, timeout=120)
                 if r.status_code == 404:
                     errors.append(f"{m}: không tồn tại")
                     break
                 if r.status_code in (429, 500, 503):
                     errors.append(f"{m}: HTTP {r.status_code} {r.text[:200]}")
                     print(f"[script] {errors[-1]}")
-                    time.sleep(15 * (attempt + 1))
+                    time.sleep(8)
                     continue
                 if not r.ok:
                     errors.append(f"{m}: HTTP {r.status_code} {r.text[:300]}")
@@ -103,9 +113,14 @@ def _clean(data: dict) -> dict:
         raise ValueError("Kịch bản không có cảnh nào")
     for s in scenes:
         s["narration"] = s["narration"].strip()
-        s["image_prompt"] = s.get("image_prompt") or "a stick figure thinking"
-        if s.get("motion") not in MOTIONS:
-            s["motion"] = "zoom_in"
+        s["background_prompt"] = s.get("background_prompt") or s.get("image_prompt") or "a cozy simple room"
+        s["keyword"] = (s.get("keyword") or "").strip()[:60]
+        if s.get("action") not in ACTIONS:
+            s["action"] = "talk"
+        if s.get("expression") not in EXPRESSIONS:
+            s["expression"] = "happy"
+        if s.get("side") not in ("left", "right"):
+            s["side"] = "left"
     data["scenes"] = scenes
     data.setdefault("title", "Video")
     data.setdefault("description", "")

@@ -3,9 +3,9 @@
   "description": "Video người que giải thích vì sao bầu trời có màu xanh và hoàng hôn lại đỏ.",
   "tags": ["khoa học", "người que", "giải thích"],
   "scenes": [
-    {"narration": "Bạn đã bao giờ tự hỏi, vì sao bầu trời lại có màu xanh, chứ không phải màu tím hay màu trắng?", "image_prompt": "a stick figure looking up at the sky with a question mark above its head", "motion": "zoom_in"},
-    {"narration": "Ánh sáng mặt trời thật ra là hỗn hợp của rất nhiều màu, từ đỏ, cam, vàng cho đến xanh và tím.", "image_prompt": "a stick figure holding a prism splitting sunlight into a rainbow", "motion": "pan_right"},
-    {"narration": "Khi đi vào khí quyển, ánh sáng xanh bị các phân tử không khí tán xạ mạnh hơn nhiều so với ánh sáng đỏ.", "image_prompt": "a stick figure scientist pointing at small air molecules bouncing light rays", "motion": "shake"},
-    {"narration": "Vậy là ánh sáng xanh lan ra khắp bầu trời, đi vào mắt chúng ta từ mọi hướng. Hãy đăng ký kênh để xem thêm nhé!", "image_prompt": "a happy stick figure waving under a blue sky with the sun", "motion": "zoom_out"}
+    {"narration": "Bạn đã bao giờ tự hỏi, vì sao bầu trời lại có màu xanh, chứ không phải màu tím hay màu trắng?", "background_prompt": "a wide open field under a big sky with a few clouds", "keyword": "Vì sao trời xanh?", "action": "think", "expression": "thinking", "side": "left"},
+    {"narration": "Ánh sáng mặt trời thật ra là hỗn hợp của rất nhiều màu, từ đỏ, cam, vàng cho đến xanh và tím.", "background_prompt": "a glass prism splitting sunlight into a rainbow on a table", "keyword": "Ánh sáng = nhiều màu", "action": "point", "expression": "happy", "side": "left"},
+    {"narration": "Khi đi vào khí quyển, ánh sáng xanh bị các phân tử không khí tán xạ mạnh hơn nhiều so với ánh sáng đỏ.", "background_prompt": "simple diagram of the earth atmosphere with tiny air molecules", "keyword": "Tán xạ Rayleigh", "action": "explain", "expression": "excited", "side": "right"},
+    {"narration": "Vậy là ánh sáng xanh lan ra khắp bầu trời, đi vào mắt chúng ta từ mọi hướng. Hãy đăng ký kênh để xem thêm nhé!", "background_prompt": "a sunny blue sky over small houses", "keyword": "Đăng ký kênh nhé!", "action": "wave", "expression": "happy", "side": "left"}
   ]
 }
