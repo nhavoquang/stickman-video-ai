@@ -5,20 +5,23 @@ Ví dụ:
     python src/main.py --topic "3 mẹo ngủ ngon" --duration 45 --aspect 9:16      # YouTube Shorts
 """
 import argparse
+import hashlib
 import json
 import random
 import re
+import shutil
 import subprocess
 import time
 import unicodedata
 from pathlib import Path
 
 import scene_video
-from images import generate_background, make_thumbnail
+from images import contact_sheets, generate_background, make_thumbnail
 from langs import LANGS, font_for, lang_info, voice_for
 from render import PAD, write_subtitles
-from scene_video import render_still, render_video
-from script_gen import generate_script
+from scene_video import preview_frames, render_still, render_video
+from character import NAMES as ACTIONS
+from script_gen import EXPRESSIONS, _clean, generate_script
 from tts import synthesize
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -29,6 +32,10 @@ def slugify(text: str) -> str:
     text = unicodedata.normalize("NFKD", text.replace("đ", "d").replace("Đ", "D"))
     text = text.encode("ascii", "ignore").decode()
     return re.sub(r"[^a-zA-Z0-9]+", "-", text).strip("-").lower()[:60] or f"video-{int(time.time())}"
+
+
+def h(*parts) -> str:
+    return hashlib.sha1("|".join(map(str, parts)).encode()).hexdigest()[:10]
 
 
 def scenes_for(duration: int) -> int:
@@ -54,6 +61,9 @@ def main():
     p.add_argument("--script-file", help="Dùng kịch bản JSON có sẵn thay vì gọi Gemini")
     p.add_argument("--out", default="output")
     p.add_argument("--offline", action="store_true", help="Chỉ để test: không gọi mạng")
+    p.add_argument("--stage", default="all", choices=["all", "assets"],
+                   help="assets = chỉ tạo ảnh nền + giọng đọc + ảnh xem trước (để duyệt), all = dựng video")
+    p.add_argument("--print-plan", action="store_true", help="In số cảnh, số từ mỗi cảnh... rồi thoát")
     a = p.parse_args()
 
     font, font_path = font_for(a.language)
@@ -63,8 +73,19 @@ def main():
     n_scenes = a.scenes or scenes_for(a.duration)
     print(f"[config] {a.language} | {a.aspect} {size[0]}x{size[1]} | ~{a.duration}s, {n_scenes} cảnh | font {font}")
 
+    if a.print_plan:
+        per = a.duration / n_scenes
+        print(json.dumps({
+            "scenes": n_scenes, "seconds_per_scene": round(per, 1),
+            "words_per_scene_latin": round(per * 2.6), "language": lang_info(a.language)[0],
+            "aspect": a.aspect, "vertical": vertical, "actions": ACTIONS,
+            "expressions": sorted(EXPRESSIONS), "sides": ["left", "right"],
+            "keyword_max_chars": 28 if vertical or a.aspect == "1:1" else 34,
+        }, ensure_ascii=False, indent=2))
+        return
+
     if a.script_file:
-        script = json.loads(Path(a.script_file).read_text(encoding="utf-8"))
+        script = _clean(json.loads(Path(a.script_file).read_text(encoding="utf-8")))
     elif a.topic:
         script = generate_script(a.topic, n_scenes, a.model, lang_info(a.language)[0],
                                  a.duration, vertical, a.notes)
@@ -74,28 +95,57 @@ def main():
     out = Path(a.out)
     work = out / "work"
     work.mkdir(parents=True, exist_ok=True)
-    seed = random.randint(1, 10**6)
     voice = voice_for(a.language, a.voice)
 
     scenes = script["scenes"]
     n_bg = min(len(scenes), MAX_BACKGROUNDS)
     bg_files = {}
+    # Có cache: chạy lại chỉ tạo phần bị thay đổi (sửa prompt nền / lời dẫn) hoặc file đã bị xoá.
     durations, wavs, bgs = [], [], []
     for i, scene in enumerate(scenes, 1):
         print(f"--- Cảnh {i}/{len(scenes)}: {scene.get('action')} / {scene.get('keyword')}")
         k = (i - 1) * n_bg // len(scenes)
         if k not in bg_files:
-            bg_files[k] = generate_background(scene.get("background_prompt", ""), work / f"bg_{k:02d}.png",
-                                              seed + k, a.style, a.offline, size)
+            prompt = scene.get("background_prompt", "")
+            key = h(prompt, a.style, size, scene.get("bg_seed", 0))
+            f = work / f"bg_{key}.png"
+            if not f.exists():
+                generate_background(prompt, f, int(key[:6], 16), a.style, a.offline, size)
+            bg_files[k] = f
         bgs.append(bg_files[k])
-        mp3 = work / f"voice_{i:02d}.mp3"
-        adur = synthesize(scene["narration"], mp3, voice, a.rate, a.offline)
+        vkey = h(scene["narration"], voice, a.rate, a.offline)
+        mp3 = work / f"voice_{vkey}.mp3"
+        if mp3.exists():
+            from tts import audio_duration
+            adur = audio_duration(mp3)
+        else:
+            adur = synthesize(scene["narration"], mp3, voice, a.rate, a.offline)
         dur = round(adur + PAD, 2)
-        wav = work / f"voice_{i:02d}.wav"
-        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(mp3), "-af", "apad",
-                        "-t", f"{dur:.2f}", "-ar", "44100", "-ac", "2", str(wav)], check=True)
+        wav = work / f"voice_{vkey}.wav"
+        if not wav.exists():
+            subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(mp3), "-af", "apad",
+                            "-t", f"{dur:.2f}", "-ar", "44100", "-ac", "2", str(wav)], check=True)
         durations.append(dur)
         wavs.append(wav)
+
+    review = out / "review"
+    shutil.rmtree(review, ignore_errors=True)
+    frames = preview_frames(scenes, bgs, review / "frames", a.style)
+    sheets = contact_sheets(frames, review / "scenes")
+    uniq = list(dict.fromkeys(bgs))
+    bg_sheets = contact_sheets(uniq, review / "backgrounds")
+    report = {
+        "total_seconds": round(sum(durations), 1), "target_seconds": a.duration,
+        "scenes": [{"n": i + 1, "seconds": d, "keyword": s_.get("keyword", ""),
+                    "background": bgs[i].name, "action": s_.get("action")}
+                   for i, (s_, d) in enumerate(zip(scenes, durations))],
+        "scene_sheets": [str(x) for x in sheets], "background_sheets": [str(x) for x in bg_sheets],
+    }
+    (review / "report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"[review] {len(sheets)} tấm xem trước cảnh, {len(bg_sheets)} tấm nền, tổng {report['total_seconds']}s")
+    if a.stage == "assets":
+        print(f"[review] xem {review}/report.json")
+        return
 
     (work / "voice.txt").write_text("".join(f"file '{w.name}'\n" for w in wavs))
     subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "concat", "-safe", "0",

@@ -12,6 +12,22 @@ Hai kiểu nhân vật: `doodle` (nét đen cổ điển) và `shirt` (áo xanh,
 3. (Tuỳ chọn) Đăng ký free tại https://auth.pollinations.ai, thêm secret `POLLINATIONS_TOKEN` để tạo ảnh nhanh hơn, ít bị giới hạn.
 4. (Tuỳ chọn) Bỏ vài file nhạc nền `.mp3` không bản quyền (ví dụ từ YouTube Audio Library) vào thư mục `music/`.
 
+## Dùng tài khoản Claude để viết và tối ưu (khuyên dùng)
+Chế độ `engine = claude`: Claude Code chạy trên GitHub Actions, làm theo `prompts/claude_director.md`:
+viết kịch bản, tự chấm điểm và sửa 2 vòng, tạo ảnh nền + giọng đọc, **xem lại từng khung hình**,
+tạo lại ảnh nền lỗi (có người, có chữ, xấu), rút gọn chữ bị tràn, rồi mới dựng video.
+Nếu Claude lỗi hoặc hết hạn mức, tool tự chuyển sang Gemini.
+
+Cài một lần:
+1. Trên máy có Claude Code, chạy `claude setup-token` và đăng nhập tài khoản Claude (Pro/Max).
+2. Copy token, thêm vào repo: Settings → Secrets and variables → Actions → New secret, tên `CLAUDE_CODE_OAUTH_TOKEN`.
+3. Claude GitHub App phải được cài cho repo này (https://github.com/apps/claude).
+
+Mỗi video dùng một phần hạn mức gói Claude của bạn. File `review_notes.md` trong Artifacts ghi lại điểm và những gì Claude đã sửa.
+
+## Tự chạy khi commit
+Mỗi lần commit lên `main`, workflow tự tạo 1 video mẫu tiếng Việt (16:9, 60 giây) với chủ đề chọn ngẫu nhiên trong `topics.txt`. Muốn chọn ngôn ngữ, khung hình, độ dài... thì chạy tay như bên dưới.
+
 ## Tạo video
 1. Tab **Actions** → **Tạo video người que** → **Run workflow**.
 2. Điền các tuỳ chọn rồi bấm **Run**:
@@ -19,6 +35,7 @@ Hai kiểu nhân vật: `doodle` (nét đen cổ điển) và `shirt` (áo xanh,
 | Tuỳ chọn | Ý nghĩa |
 |---|---|
 | Chủ đề | Nội dung video |
+| Engine | `claude` (tối ưu nhiều vòng) hoặc `gemini` (nhanh) |
 | Ngôn ngữ | vi, en, ja, ko, zh, th, id, es, fr, de, pt, hi (lời dẫn, phụ đề, giọng đọc đều theo ngôn ngữ này) |
 | Khung hình | `16:9` ngang (YouTube, laptop), `9:16` dọc (Shorts, TikTok, Reels), `1:1` vuông |
 | Độ dài | 30 giây đến 10 phút (số cảnh tự tính theo độ dài) |

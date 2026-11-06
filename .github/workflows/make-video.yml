@@ -1,11 +1,21 @@
 name: Tạo video người que
 
 on:
+  # Mỗi lần commit lên main: tự chạy 1 video mẫu tiếng Việt (chủ đề lấy từ topics.txt)
+  push:
+    branches: [main]
+    paths-ignore: ["README.md", "music/**"]
+  # Chạy tay trên web: chọn đầy đủ tuỳ chọn
   workflow_dispatch:
     inputs:
       topic:
         description: "Chủ đề video"
         required: true
+      engine:
+        description: "Ai viết và tối ưu: claude (nhiều vòng, dùng tài khoản Claude) hoặc gemini (nhanh)"
+        type: choice
+        options: [claude, gemini]
+        default: claude
       language:
         description: "Ngôn ngữ (vi Việt, en Anh, ja Nhật, ko Hàn, zh Trung, th Thái, id Indo, es, fr, de, pt, hi)"
         type: choice
@@ -47,7 +57,21 @@ on:
 jobs:
   video:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 150
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      INPUT_TOPIC: ${{ inputs.topic || '' }}
+      LANGUAGE: ${{ inputs.language || 'vi' }}
+      ASPECT: ${{ inputs.aspect || '16:9' }}
+      DURATION: ${{ inputs.duration || '60' }}
+      VOICE: ${{ inputs.voice || 'nu' }}
+      STYLE: ${{ inputs.style || 'doodle' }}
+      RATE: ${{ inputs.rate || '+5%' }}
+      SUBTITLES: ${{ inputs.subtitles || 'on' }}
+      NOTES: ${{ inputs.notes || '' }}
+      POLLINATIONS_TOKEN: ${{ secrets.POLLINATIONS_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -55,28 +79,60 @@ jobs:
           python-version: "3.12"
           cache: pip
       - name: Cài ffmpeg, cairo và font đa ngôn ngữ
+        timeout-minutes: 15
         run: |
+          sudo rm -f /var/lib/man-db/auto-update
           sudo apt-get update -qq
-          sudo apt-get install -y -qq ffmpeg libcairo2-dev pkg-config python3-dev \
+          sudo apt-get install -y -qq --no-install-recommends ffmpeg libcairo2-dev pkg-config python3-dev \
             fonts-dejavu-core fonts-noto-core fonts-noto-cjk
       - run: pip install -r requirements.txt
-      - name: Tạo video
+      - name: Ghi yêu cầu
+        run: |
+          mkdir -p output
+          python - <<'PY'
+          import json, os, random
+          keys = ["topic", "language", "aspect", "duration", "voice", "style", "rate", "subtitles", "notes"]
+          req = {k: os.environ["INPUT_TOPIC" if k == "topic" else k.upper()] for k in keys}
+          if not req["topic"].strip():  # chạy do commit: lấy ngẫu nhiên 1 chủ đề trong topics.txt
+              topics = [t.strip() for t in open("topics.txt", encoding="utf-8") if t.strip() and not t.startswith("#")]
+              req["topic"] = random.choice(topics)
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as f:
+              f.write(f"TOPIC={req['topic']}\n")
+          json.dump(req, open("output/request.json", "w", encoding="utf-8"), ensure_ascii=False, indent=2)
+          print(req)
+          PY
+
+      - name: Claude viết kịch bản và tối ưu nhiều vòng
+        if: (inputs.engine || 'claude') == 'claude'
+        id: claude
+        continue-on-error: true
+        timeout-minutes: 60
+        uses: anthropics/claude-code-action@v1
+        env:
+          BASH_DEFAULT_TIMEOUT_MS: "1800000"
+          BASH_MAX_TIMEOUT_MS: "3600000"
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: "Đọc file prompts/claude_director.md và làm đúng theo hướng dẫn trong đó. Yêu cầu video nằm trong output/request.json."
+          claude_args: |
+            --max-turns 120
+            --allowedTools "Bash,Read,Write,Edit,Glob,Grep"
+
+      - name: Dựng video
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          POLLINATIONS_TOKEN: ${{ secrets.POLLINATIONS_TOKEN }}
-          TOPIC: ${{ inputs.topic }}
-          LANGUAGE: ${{ inputs.language }}
-          ASPECT: ${{ inputs.aspect }}
-          DURATION: ${{ inputs.duration }}
-          VOICE: ${{ inputs.voice }}
-          STYLE: ${{ inputs.style }}
-          RATE: ${{ inputs.rate }}
-          SUBTITLES: ${{ inputs.subtitles }}
-          NOTES: ${{ inputs.notes }}
-        run: >
-          python src/main.py --topic "$TOPIC" --language "$LANGUAGE" --aspect "$ASPECT"
-          --duration "$DURATION" --voice "$VOICE" --style "$STYLE" --rate="$RATE"
-          --subtitles "$SUBTITLES" --notes="$NOTES"
+        run: |
+          COMMON=(--language "$LANGUAGE" --aspect "$ASPECT" --duration "$DURATION" --voice "$VOICE"
+                  --style "$STYLE" --rate="$RATE" --subtitles "$SUBTITLES")
+          if [ -f output/script.json ] && python -c "import json;json.load(open('output/script.json'))"; then
+            echo "Dùng kịch bản Claude đã tối ưu"
+            python src/main.py --script-file output/script.json "${COMMON[@]}" \
+              || python src/main.py --topic "$TOPIC" --notes="$NOTES" "${COMMON[@]}"
+          else
+            echo "Không có kịch bản Claude, dùng Gemini"
+            python src/main.py --topic "$TOPIC" --notes="$NOTES" "${COMMON[@]}"
+          fi
+
       - name: Tải video về
         uses: actions/upload-artifact@v4
         with:
@@ -85,4 +141,6 @@ jobs:
             output/*.mp4
             output/*.jpg
             output/*.json
+            output/review_notes.md
+            output/review/*.jpg
           retention-days: 14

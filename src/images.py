@@ -124,3 +124,30 @@ def make_thumbnail(frame: Path, title: str, out: Path, size=(1280, 720), font_pa
         y += int(fs * 1.2)
     img.save(out, "JPEG", quality=92)
     return out
+
+
+def contact_sheets(files, out_prefix: Path, per_sheet=12, thumb_w=640):
+    """Ghép nhiều ảnh thành vài tấm lưới có đánh số, để xem nhanh (Claude dùng để duyệt)."""
+    sheets = []
+    try:
+        font = ImageFont.truetype(FONT, 34)
+    except OSError:
+        font = ImageFont.load_default()
+    for s in range(0, len(files), per_sheet):
+        chunk = files[s:s + per_sheet]
+        ims = [Image.open(f).convert("RGB") for f in chunk]
+        w0, h0 = ims[0].size
+        tw, th = thumb_w, int(thumb_w * h0 / w0)
+        cols = 4 if th <= tw else 6
+        rows = (len(ims) + cols - 1) // cols
+        sheet = Image.new("RGB", (cols * tw, rows * th), "white")
+        d = ImageDraw.Draw(sheet)
+        for k, im in enumerate(ims):
+            x, y = (k % cols) * tw, (k // cols) * th
+            sheet.paste(im.resize((tw, th)), (x, y))
+            d.rectangle([x, y, x + 70, y + 46], fill="black")
+            d.text((x + 8, y + 4), str(s + k + 1), fill="white", font=font)
+        out = Path(f"{out_prefix}_{s // per_sheet + 1:02d}.jpg")
+        sheet.save(out, "JPEG", quality=85)
+        sheets.append(out)
+    return sheets

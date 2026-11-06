@@ -281,3 +281,40 @@ def render_still(background, out_png, style="doodle", side="left"):
     draw_character(ctx, pose, x, GROUND + sdy, sscale, style, {"expression": "excited", "mouth": 0.7})
     surf.write_to_png(str(out_png))
     return out_png
+
+
+def preview_frames(scenes, backgrounds, out_dir, style="doodle"):
+    """Vẽ nhanh 1 khung hình đại diện cho mỗi cảnh (không cần dựng cả video) để kiểm tra bố cục.
+
+    Trả về danh sách file PNG, mỗi file là cảnh lúc thẻ chữ đã hiện đầy đủ.
+    """
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    surf = cairo.ImageSurface(cairo.FORMAT_ARGB32, W, H)
+    ctx = cairo.Context(surf)
+    cache, files = {}, []
+    for i, (sc, bg) in enumerate(zip(scenes, backgrounds)):
+        if bg not in cache:
+            cache[bg] = _load_bg(bg)
+        side = sc.get("side", "left")
+        x = L["char_x"][0 if side == "left" else 1]
+        card_x, card_y = L["card"][0 if side == "left" else 1]
+        ctx.set_source_rgb(1, 1, 1)
+        ctx.paint()
+        _paint_bg(ctx, cache[bg], 1.5, 6, 1 if i % 2 == 0 else -1)
+        _soft_spot(ctx, x, GROUND)
+        pose = pose_at(sc.get("action", "talk"), 1.2, seed=i)
+        draw_character(ctx, _mirror(pose) if side == "right" else pose, x, GROUND, L["scale"], style,
+                       {"expression": sc.get("expression", "happy"), "mouth": 0.5})
+        _keyword_card(ctx, sc.get("keyword", ""), card_x, card_y, 1.5, ACCENTS[i % len(ACCENTS)])
+        ctx.save()
+        ctx.select_font_face(FONT, cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_BOLD)
+        ctx.set_font_size(44)
+        ctx.set_source_rgba(0, 0, 0, 0.75)
+        ctx.move_to(130, 60)
+        ctx.show_text(f"#{i + 1} {sc.get('action')} / {sc.get('expression')}")
+        ctx.restore()
+        f = out_dir / f"scene_{i + 1:02d}.png"
+        surf.write_to_png(str(f))
+        files.append(f)
+    return files
