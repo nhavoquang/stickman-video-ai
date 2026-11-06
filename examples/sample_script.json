@@ -1,0 +1,11 @@
+{
+  "title": "Vì sao bầu trời màu xanh? Giải thích trong 1 phút",
+  "description": "Video người que giải thích vì sao bầu trời có màu xanh và hoàng hôn lại đỏ.",
+  "tags": ["khoa học", "người que", "giải thích"],
+  "scenes": [
+    {"narration": "Bạn đã bao giờ tự hỏi, vì sao bầu trời lại có màu xanh, chứ không phải màu tím hay màu trắng?", "image_prompt": "a stick figure looking up at the sky with a question mark above its head", "motion": "zoom_in"},
+    {"narration": "Ánh sáng mặt trời thật ra là hỗn hợp của rất nhiều màu, từ đỏ, cam, vàng cho đến xanh và tím.", "image_prompt": "a stick figure holding a prism splitting sunlight into a rainbow", "motion": "pan_right"},
+    {"narration": "Khi đi vào khí quyển, ánh sáng xanh bị các phân tử không khí tán xạ mạnh hơn nhiều so với ánh sáng đỏ.", "image_prompt": "a stick figure scientist pointing at small air molecules bouncing light rays", "motion": "shake"},
+    {"narration": "Vậy là ánh sáng xanh lan ra khắp bầu trời, đi vào mắt chúng ta từ mọi hướng. Hãy đăng ký kênh để xem thêm nhé!", "image_prompt": "a happy stick figure waving under a blue sky with the sun", "motion": "zoom_out"}
+  ]
+}
