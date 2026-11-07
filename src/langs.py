@@ -3,7 +3,7 @@ import subprocess
 
 LANGS = {
     "vi": ("tiếng Việt", "vi-VN-HoaiMyNeural", "vi-VN-NamMinhNeural", "Noto Sans"),
-    "en": ("English", "en-US-AvaNeural", "en-US-AndrewNeural", "Noto Sans"),
+    "en": ("English", "en-US-AvaNeural", "en-US-GuyNeural", "Noto Sans"),
     "ja": ("日本語 (Japanese)", "ja-JP-NanamiNeural", "ja-JP-KeitaNeural", "Noto Sans CJK JP"),
     "ko": ("한국어 (Korean)", "ko-KR-SunHiNeural", "ko-KR-InJoonNeural", "Noto Sans CJK KR"),
     "zh": ("简体中文 (Simplified Chinese)", "zh-CN-XiaoxiaoNeural", "zh-CN-YunxiNeural", "Noto Sans CJK SC"),

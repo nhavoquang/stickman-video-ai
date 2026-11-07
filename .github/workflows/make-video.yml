@@ -55,7 +55,26 @@ on:
         default: ""
 
 jobs:
+  # Claude Code Action không chạy trực tiếp với sự kiện push, nên khi commit
+  # job này tự bấm "Run workflow" với tuỳ chọn mặc định (tiếng Việt, 16:9, 60 giây).
+  sample-on-push:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Chạy 1 video mẫu tiếng Việt
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TOPIC=$(grep -v '^#' topics.txt | sed '/^\s*$/d' | shuf -n 1)
+          echo "Chủ đề: $TOPIC"
+          gh workflow run make-video.yml --ref "${{ github.ref_name }}" -f topic="$TOPIC" -f language=vi
+
   video:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 150
     permissions:

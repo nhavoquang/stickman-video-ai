@@ -35,7 +35,9 @@ def _same_locale_voice(voice):
         voices = asyncio.run(edge_tts.list_voices())
     except Exception:
         return None
-    same = [v["ShortName"] for v in voices if v["Locale"] == locale]
+    gender = next((v["Gender"] for v in voices if v["ShortName"] == voice), None)
+    same = [v["ShortName"] for v in voices if v["Locale"] == locale and v["ShortName"] != voice
+            and (gender is None or v["Gender"] == gender)]
     print(f"[tts] dùng giọng thay thế: {same[:1]}")
     return same[0] if same else None
 
