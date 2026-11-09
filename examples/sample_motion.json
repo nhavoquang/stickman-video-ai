@@ -1,13 +1,29 @@
 {
  "title": "Vì sao mèo mê hộp giấy đến vậy?",
- "description": "Mèo bỏ qua cái giường xịn để chui vào hộp giấy. Khoa học giải thích vì sao.",
+ "description": "Mèo bỏ qua cái giường 500 nghìn để chui vào cái hộp giấy đựng nó? Đây không phải trò đùa của mèo nhà bạn, mà có cả khoa học đằng sau.\n\nTrong video này bạn sẽ biết vì sao chiếc hộp giúp mèo bớt căng thẳng, vì sao bên trong hộp lại ấm hơn, và một nghiên cứu ở Hà Lan đã chứng minh điều gì.\n\nĐăng ký kênh để mỗi ngày biết thêm một điều thú vị!",
+ "hashtags": [
+  "#mèo",
+  "#khoahọc",
+  "#sựthậtthúvị"
+ ],
  "tags": [
   "mèo",
-  "khoa học",
+  "vì sao mèo thích hộp giấy",
+  "mèo chui hộp",
+  "khoa học về mèo",
   "thú cưng",
-  "hộp giấy",
-  "sự thật thú vị"
+  "sự thật thú vị",
+  "mèo cưng",
+  "hộp giấy"
  ],
+ "thumbnail": {
+  "text": "MÈO MÊ HỘP?!",
+  "cast": "cat",
+  "expr": "shock",
+  "prop": "box",
+  "stage": "room"
+ },
+ "music": "upbeat",
  "art_style": "cute chibi 2D cartoon, bold clean dark outlines, soft cel shading, warm vibrant colors",
  "cast": [
   {
@@ -106,6 +122,10 @@
      "y": 0.62,
      "zoom": 1.3
     }
+   ],
+   "emphasis": [
+    "năm",
+    "trăm"
    ]
   },
   {
@@ -172,7 +192,17 @@
       0.74,
       0.66
      ]
+    },
+    {
+     "at": 5,
+     "do": "react",
+     "id": "cat",
+     "icon": "heart"
     }
+   ],
+   "emphasis": [
+    "hộp",
+    "giấy"
    ]
   },
   {
@@ -228,6 +258,10 @@
      "y": 0.55,
      "kind": "sparkle"
     }
+   ],
+   "emphasis": [
+    "căng",
+    "thẳng."
    ]
   },
   {
@@ -291,6 +325,9 @@
      "id": "cat",
      "anim": "jump"
     }
+   ],
+   "emphasis": [
+    "ba"
    ]
   },
   {
@@ -341,6 +378,9 @@
      "id": "cat",
      "anim": "wiggle"
     }
+   ],
+   "emphasis": [
+    "ấm"
    ]
   },
   {
@@ -406,6 +446,9 @@
      "y": 0.45,
      "kind": "confetti"
     }
+   ],
+   "emphasis": [
+    "hộp!"
    ]
   }
  ]

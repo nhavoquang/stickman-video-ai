@@ -10,16 +10,22 @@ Return ONLY JSON with this shape:
 
 ```json
 {
-  "title": "...", "description": "...", "tags": ["..."],
+  "title": "catchy YouTube title, max 70 characters, curiosity hook, no clickbait lies",
+  "description": "YouTube description: 1st line = hook sentence with the main keyword; then 2-4 sentences summarising what the viewer learns; then a call to subscribe. Max 900 characters. No hashtags here.",
+  "hashtags": ["#FunFacts", "#Science", "#..."],
+  "tags": ["8-15 search keywords/phrases people type on YouTube"],
+  "thumbnail": {"text": "2-4 WORD HOOK", "cast": "hero", "expr": "shock", "prop": "coffee", "stage": "office"},
+  "music": "upbeat | chill | mystery | epic | none  (background music mood that fits the topic)",
   "art_style": "one consistent art style for ALL images, e.g. 'cute chibi 2D cartoon, bold clean outlines, soft cel shading, vibrant colors'",
   "cast":  [{"id": "hero", "prompt": "a cute chibi young office worker with glasses, blue shirt",
-             "expressions": {"shock": "same character, screaming with mouth wide open, hands on cheeks",
-                             "happy": "same character, big smile, thumbs up"}}],
+             "expressions": {"shock": "same character, wide eyes, raised eyebrows, hands on cheeks",
+                             "happy": "same character, eyes closed happily, thumbs up"}}],
   "props": [{"id": "coffee", "prompt": "a steaming cup of coffee"}],
   "stages": [{"id": "office", "prompt": "a cozy modern office interior, desks and plants, morning light", "dof": false}],
   "scenes": [
     {"narration": "spoken text of this beat (1-2 short sentences)",
      "stage": "office", "speaker": "hero", "transition": "whip",
+     "emphasis": ["8", "coffee"],
      "events": [
         {"at": 0, "do": "camera", "x": 0.35, "y": 0.6, "zoom": 1.3},
         {"at": 0, "do": "enter", "id": "hero", "x": 0.35, "y": 0.85, "size": 0.32, "anim": "pop"},
@@ -32,6 +38,10 @@ Return ONLY JSON with this shape:
   ]
 }
 ```
+
+All metadata (title, description, hashtags, tags, thumbnail text) is in the video's language.
+`thumbnail`: a short punchy text (different from the title), the cast member + expression with the
+strongest emotion, an optional prop that tells the story at a glance, and the stage behind them.
 
 ## Coordinates and sizes
 - `x`, `y` are positions on the STAGE image, from 0 to 1 (0,0 = top-left). The stage is 1.5× bigger than
@@ -64,10 +74,28 @@ Return ONLY JSON with this shape:
 | burst | x, y, kind: sparkle/confetti | celebration, "aha", money |
 | flow | id (a prop), points:[[x,y],...], count, size (≈0.04), speed?, hold? | many copies streaming along a path (cars, coins, cells, goods) |
 | shake | strength 0.5–2 | impact, shock |
+| react | id, icon: ! / ? / idea / heart / anger / sweat / sparkle / stars | cartoon emotion icon above a character's head |
+
+`emphasis` (per scene): 1–2 key words of that narration (numbers, names, the surprising word). They pop up big
+and green in the captions with a quick camera punch-in — use them on the words that carry the "wow".
+An `expr` change automatically shows a matching `react` icon (shock → !, thinking → ?, happy → sparkle,
+sad/worried → sweat, love → heart, angry → anger); add `"react": false` to that event to disable it.
 
 Overlays (label/arrow/line/highlight/burst/flow) disappear after `hold` seconds (default 2.6) or at the next stage change.
 Changing `stage` between scenes clears all characters/props, so re-`enter` them in the new stage.
 Stage `transition`: whip (fast blurred pan, default), zoom (zoom through), cut.
+
+## Storytelling rules (this is what keeps people watching)
+A. Sentence 1 is the hook, ≤ 10 words: a surprising fact, a bold claim, or a question the viewer can't
+   answer. Never greet, never say "in this video", never start with the topic name alone.
+B. Open a loop in the first 5 seconds and close it near the end ("…but reason #3 is the weirdest",
+   "and the answer surprised scientists").
+C. Every 8–10 seconds give a mini-reveal, a twist, a number, or a question to the viewer.
+   Short spoken sentences (≤ 12 words), conversational, "you"-focused, concrete comparisons
+   ("as heavy as 3 elephants") instead of abstract words.
+D. Emotion: the character reacts (expression change) at least every ~6 seconds.
+E. Ending: a punchy payoff, then ≤ 6 words of call to action. For Shorts, write the last line so it
+   flows back into the first line (seamless loop).
 
 ## Direction rules (this is what makes the video look professional)
 1. HOOK: scene 1 starts close (zoom ≥ 1.4) on something surprising; first event at word 0.
@@ -84,6 +112,13 @@ Stage `transition`: whip (fast blurred pan, default), zoom (zoom through), cut.
 8. Characters stand on the ground (y ≈ 0.8–0.9 of stage) unless flying; keep them away from the bottom
    ~15% of the SCREEN where captions are.
 9. Vertical 9:16: compose in the middle column (x 0.3–0.7), use close camera (zoom 1.2–1.8).
-10. Prompts: cast/props prompts describe ONE subject only, no background; stage prompts describe a place
+10. Faces: the engine draws an animated mouth (lip-sync to the voice) and eye blinks on every cast
+    member. So cast and expression prompts must show the character FRONT-facing with a clear face and a
+    SMALL CLOSED mouth; express emotion with eyes, eyebrows, pose and hands (not with an open mouth).
+    The expression key names the mood of the drawn mouth: shock/surprised → "O" mouth, sad/angry/worried
+    → frown, happy/laugh/excited → big smile, thinking/confused → flat. Optional per-image fix if the
+    mouth is misplaced: `"faces": {"base": {"mouth": [x, y], "mouth_width": w, "eyes": [[x,y,r],[x,y,r]],
+    "skin": "#hex", "has_mouth": true}, "<expr>": {...}}` inside a cast entry (0–1 of the image).
+11. Prompts: cast/props prompts describe ONE subject only, no background; stage prompts describe a place
     with NO people and NO text. All in English. Everything shares `art_style`.
-11. Ending: payoff + call to like/subscribe with a final `burst` or character `wave`-like action (bounce/jump).
+12. Ending: payoff + call to like/subscribe with a final `burst` or character `wave`-like action (bounce/jump).

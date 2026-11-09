@@ -1,10 +1,11 @@
 name: Tạo video người que
+run-name: "${{ inputs.topic || 'Video mẫu (commit)' }} | ${{ inputs.language || 'vi' }} ${{ inputs.aspect || '16:9' }}"
 
 on:
   # Mỗi lần commit lên main: tự chạy 1 video mẫu tiếng Việt (chủ đề lấy từ topics.txt)
   push:
     branches: [main]
-    paths-ignore: ["README.md", "music/**"]
+    paths-ignore: ["README.md", "music/**", "dashboard/**", "docs/**"]
   # Chạy tay trên web: chọn đầy đủ tuỳ chọn
   workflow_dispatch:
     inputs:
@@ -128,6 +129,7 @@ jobs:
         timeout-minutes: 60
         uses: anthropics/claude-code-action@v1
         env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}  # dò vị trí mặt/miệng nhân vật
           BASH_DEFAULT_TIMEOUT_MS: "1800000"
           BASH_MAX_TIMEOUT_MS: "3600000"
         with:
@@ -154,14 +156,21 @@ jobs:
             python src/main.py --topic "$TOPIC" --notes="$NOTES" "${COMMON[@]}"
           fi
 
-      - name: Tải video về
+      - name: Tải gói YouTube về (video, thumbnail, tiêu đề, mô tả, tags)
         uses: actions/upload-artifact@v4
         with:
-          name: video
+          name: youtube
+          path: output/youtube/
+          retention-days: 14
+
+      - name: Tải bản xem trước và ghi chú của Claude
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: review
           path: |
-            output/*.mp4
-            output/*.jpg
-            output/*.json
+            output/script.json
             output/review_notes.md
             output/review/*.jpg
           retention-days: 14
+          if-no-files-found: ignore

@@ -13,8 +13,10 @@ import cairo
 from PIL import Image, ImageFilter
 
 import scene_video as SV  # dùng chung W, H, FONT, LANG, tokens()
+import face as FACE
 
 FPS = 30
+CAPTION_FONT = None  # font đậm nhất cho phụ đề (đặt trong render)
 EV_DUR = {"camera": 0.9, "move": 0.8, "enter": 0.45, "exit": 0.4, "action": 0.6, "expr": 0.25,
           "arrow": 0.5, "line": 1.1, "highlight": 0.6, "label": 0.35, "burst": 0.9, "flow": 3.0}
 SFX_FOR = {"enter": "pop", "exit": "whoosh", "expr": "pop", "burst": "ding", "label": "tick",
@@ -106,8 +108,37 @@ class Film:
                 self.events.append((t0 + max(0.0, t) + float(ev.get("delay", 0)), si, ev))
             t0 += dur
         self.total = t0
+        self._emphasis()
         self.events.sort(key=lambda e: (e[0], 0 if e[2].get("do") == "stage" else 1))
         self._build_tracks()
+
+    def _emphasis(self):
+        """Từ khoá được nhấn: số liệu, từ trong scene['emphasis'], CHỮ HOA. Mỗi từ khoá có cú zoom nhẹ."""
+        import re
+        import unicodedata
+        def norm(w):
+            w = unicodedata.normalize("NFC", w.lower())
+            return re.sub(r"[^\w%$€£¥]+", "", w)
+        self.emph = set()
+        self.punches = []
+        for i, (a, b, w, si) in enumerate(self.words):
+            sc = self.film["scenes"][si]
+            keys = {norm(x) for k in sc.get("emphasis", []) for x in str(k).split()}
+            raw = w.strip(".,!?;:…\"'()")
+            if (norm(w) and norm(w) in keys) or re.search(r"\d", w) or \
+                    (len(raw) >= 2 and raw.isupper() and raw.isalpha()):
+                self.emph.add(i)
+                if not self.punches or a - self.punches[-1] > 1.2:
+                    self.punches.append(a)
+
+    def punch_at(self, t):
+        """0..1: độ 'giật' camera ngắn ngay khi nói từ khoá."""
+        best = 0.0
+        for tp in self.punches:
+            d = t - tp
+            if 0 <= d < 0.45:
+                best = max(best, math.exp(-d * 9) * (1 - math.exp(-d * 60)))
+        return best
 
     def _build_tracks(self):
         """Mỗi đối tượng: danh sách sự kiện theo thời gian. Đổi sân khấu thì xoá sân khấu cũ."""
@@ -116,6 +147,7 @@ class Film:
         self.cameras = []   # (t, x, y, zoom, dur)
         self.shakes = []
         self.overlays = []  # arrow/line/highlight/label/burst: (t, ev, end_t)
+        self.reactions = []  # (t, oid, icon): biểu tượng cảm xúc trên đầu nhân vật
         gen = 0
         for t, si, ev in self.events:
             do = ev.get("do")
@@ -136,8 +168,13 @@ class Film:
             elif do in ("arrow", "line", "highlight", "label", "burst", "flow"):
                 hold = float(ev.get("hold", 2.6 if do != "burst" else 1.0))
                 self.overlays.append((t, ev, t + hold, gen))
+            elif do == "react":
+                self.reactions.append((t, f'{ev.get("id")}#{gen}', str(ev.get("icon", "!"))))
             elif do in ("enter", "move", "exit", "action", "expr"):
                 oid = f'{ev.get("id")}#{gen}'
+                icon = react_for(ev.get("expr", "")) if do in ("expr", "enter") and ev.get("expr") else None
+                if icon and ev.get("react", True) is not False:
+                    self.reactions.append((t + (0.25 if do == "enter" else 0.05), oid, icon))
                 if do == "enter" or oid not in self.objects:
                     if do != "enter":
                         continue  # chưa vào sân khấu thì bỏ qua
@@ -185,7 +222,7 @@ class Film:
 def obj_state(o, t, film_assets):
     """Vị trí, cỡ, góc, độ mờ, ảnh của một đối tượng tại thời điểm t."""
     st = {"x": 0.5, "y": 0.7, "size": 0.4, "rot": 0.0, "alpha": 1.0, "sx": 1.0, "sy": 1.0,
-          "dx": 0.0, "dy": 0.0, "flip": False, "expr": None, "blur": 0.0}
+          "dx": 0.0, "dy": 0.0, "flip": False, "expr": None, "blur": 0.0, "lean": 0.0}
     for te, ev in o["events"]:
         if te > t:
             break
@@ -226,8 +263,16 @@ def obj_state(o, t, film_assets):
             if ev.get("path") == "arc" and p < 1:
                 st["y"] -= math.sin(p * math.pi) * float(ev.get("height", 0.12))
             if 0 < k < d:
-                st["rot"] += math.sin(k / d * math.pi) * (6 if tx > x0 else -6)
-                st["blur"] = max(st["blur"], math.sin(k / d * math.pi) * 0.6)
+                q = k / d
+                dirn = 1 if tx > x0 else -1
+                st["lean"] += dirn * 0.16 * math.sin(q * math.pi)  # nghiêng người theo hướng đi
+                st["blur"] = max(st["blur"], math.sin(q * math.pi) * 0.45)
+                if ev.get("path") != "arc":  # bước nhún: nảy lên rồi bẹp khi chạm đất
+                    steps = max(2, round(d * 3.2))
+                    hop = abs(math.sin(math.pi * steps * q))
+                    st["dy"] -= 0.022 * hop
+                    st["sy"] *= 1 - 0.07 * (1 - hop) + 0.04 * hop
+                    st["sx"] *= 1 + 0.05 * (1 - hop)
             if "flip" in ev:
                 st["flip"] = bool(ev["flip"])
         elif do == "exit":
@@ -245,7 +290,7 @@ def obj_state(o, t, film_assets):
                 st["rot"] += 40 * p
         elif do == "action":
             anim = ev.get("anim", "bounce")
-            d = float(ev.get("dur", EV_DUR["action"]))
+            d = float(ev.get("dur", EV_DUR["action"] * (1.4 if anim == "jump" else 1)))
             p = k / d
             if anim == "grow":
                 st["size"] *= 1 + 0.35 * ease_out(p)
@@ -257,8 +302,20 @@ def obj_state(o, t, film_assets):
                     st["dy"] -= 0.05 * abs(math.sin(p * math.pi * 2))
                     st["sy"] *= 1 + 0.06 * math.sin(p * math.pi * 4)
                 elif anim == "jump":
-                    st["dy"] -= 0.16 * w
-                    st["sy"] *= 1 + 0.12 * math.sin(p * math.pi * 2)
+                    if p < 0.18:  # lấy đà: ngồi xuống
+                        c = math.sin(p / 0.18 * math.pi / 2)
+                        st["sy"] *= 1 - 0.16 * c
+                        st["sx"] *= 1 + 0.10 * c
+                    elif p < 0.82:  # bay: kéo dài người
+                        q = (p - 0.18) / 0.64
+                        st["dy"] -= 0.17 * math.sin(q * math.pi)
+                        st["sy"] *= 1 + 0.12 * math.cos(q * math.pi) * (1 if q < 0.5 else 0.3)
+                        st["sx"] *= 1 - 0.06 * math.cos(q * math.pi) * (1 if q < 0.5 else 0.3)
+                    else:  # chạm đất: bẹp rồi đàn hồi
+                        q = (p - 0.82) / 0.18
+                        c = math.sin(q * math.pi)
+                        st["sy"] *= 1 - 0.14 * c
+                        st["sx"] *= 1 + 0.10 * c
                 elif anim == "shake":
                     st["dx"] += 0.012 * math.sin(p * 60) * (1 - p)
                 elif anim == "spin":
@@ -284,6 +341,270 @@ def obj_state(o, t, film_assets):
 
 
 # ------------------------------------------------------------------ vẽ ---
+
+
+REACT_KEYS = (("!", ("shock", "surpris", "scare", "wow", "amaz", "gasp", "fear")),
+              ("?", ("confus", "think", "wonder", "curious", "doubt", "puzzl")),
+              ("idea", ("idea", "realiz", "smart", "genius", "eureka")),
+              ("heart", ("love", "adore", "cute", "kiss")),
+              ("anger", ("angry", "mad", "furious", "annoy")),
+              ("sweat", ("sad", "cry", "worr", "tired", "nervous", "embarrass", "awkward", "sick")),
+              ("sparkle", ("happy", "excit", "laugh", "joy", "proud", "cheer", "smile")),
+              ("stars", ("dizzy", "confused2")))
+
+
+def react_for(expr):
+    e = str(expr).lower()
+    for icon, keys in REACT_KEYS:
+        if any(k in e for k in keys):
+            return icon
+    return None
+
+
+def draw_reaction(ctx, icon, k, x, top, hh):
+    """Biểu tượng cảm xúc kiểu hoạt hình phía trên đầu, bật ra rồi nhún nhẹ, mờ dần."""
+    r = max(14.0, hh * 0.085)
+    pop = back(clamp(k / 0.22), 3.0)
+    fade = clamp((1.6 - k) / 0.3)
+    if pop <= 0.01 or fade <= 0:
+        return
+    bob = math.sin(k * 7) * r * 0.12
+    ctx.save()
+    ctx.translate(x + r * 0.6, top - r * 0.9 + bob)
+    ctx.scale(pop, pop)
+    ctx.rotate(math.radians(8 * math.sin(k * 5)))
+    ink = (0.1, 0.08, 0.12)
+    lw = r * 0.16
+
+    def outline_fill(col):
+        ctx.set_source_rgba(*ink, fade)
+        ctx.set_line_width(lw)
+        ctx.set_line_join(cairo.LINE_JOIN_ROUND)
+        ctx.stroke_preserve()
+        ctx.set_source_rgba(*col, fade)
+        ctx.fill()
+
+    if icon == "!":
+        for dx, h in ((-0.35, 1.0), (0.45, 0.8)):
+            ctx.save()
+            ctx.translate(dx * r, 0)
+            ctx.rotate(math.radians(-12 if dx < 0 else 12))
+            ctx.move_to(-0.22 * r, -1.3 * r * h)
+            ctx.line_to(0.22 * r, -1.3 * r * h)
+            ctx.line_to(0.12 * r, 0.2 * r)
+            ctx.line_to(-0.12 * r, 0.2 * r)
+            ctx.close_path()
+            outline_fill((1, 0.25, 0.25))
+            ctx.arc(0, 0.62 * r, 0.2 * r, 0, 2 * math.pi)
+            outline_fill((1, 0.25, 0.25))
+            ctx.restore()
+    elif icon == "?":
+        ctx.select_font_face("DejaVu Sans", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_BOLD)
+        ctx.set_font_size(r * 2.4)
+        ext = ctx.text_extents("?")
+        ctx.move_to(-ext.width / 2 - ext.x_bearing, ext.height / 2)
+        ctx.text_path("?")
+        outline_fill((0.35, 0.65, 1))
+    elif icon == "heart":
+        for j, (dx, dy, sc) in enumerate(((0, 0, 1), (0.9, -0.8, 0.55))):
+            ctx.save()
+            ctx.translate(dx * r, dy * r + math.sin(k * 6 + j) * r * 0.1)
+            ctx.scale(sc, sc)
+            ctx.move_to(0, r * 0.7)
+            ctx.curve_to(-r * 1.3, -r * 0.2, -r * 0.6, -r * 1.2, 0, -r * 0.45)
+            ctx.curve_to(r * 0.6, -r * 1.2, r * 1.3, -r * 0.2, 0, r * 0.7)
+            outline_fill((1, 0.3, 0.45))
+            ctx.restore()
+    elif icon == "idea":
+        ctx.arc(0, -r * 0.3, r * 0.75, math.pi * 0.8, math.pi * 2.2)
+        ctx.line_to(r * 0.35, r * 0.65)
+        ctx.line_to(-r * 0.35, r * 0.65)
+        ctx.close_path()
+        outline_fill((1, 0.9, 0.25))
+        ctx.rectangle(-r * 0.32, r * 0.7, r * 0.64, r * 0.3)
+        outline_fill((0.7, 0.7, 0.75))
+        for a in range(-2, 3):
+            ang = -math.pi / 2 + a * 0.55
+            ctx.move_to(math.cos(ang) * r * 1.05, -r * 0.3 + math.sin(ang) * r * 1.05)
+            ctx.line_to(math.cos(ang) * r * 1.45, -r * 0.3 + math.sin(ang) * r * 1.45)
+        ctx.set_source_rgba(1, 0.8, 0.1, fade)
+        ctx.set_line_width(lw * 1.1)
+        ctx.set_line_cap(cairo.LINE_CAP_ROUND)
+        ctx.stroke()
+    elif icon == "anger":
+        for q in range(4):
+            ctx.save()
+            ctx.rotate(q * math.pi / 2)
+            ctx.move_to(r * 0.2, -r * 0.2)
+            ctx.curve_to(r * 0.3, -r * 0.6, r * 0.6, -r * 0.6, r * 0.75, -r * 0.75)
+            ctx.set_source_rgba(0.9, 0.1, 0.15, fade)
+            ctx.set_line_width(lw * 1.6)
+            ctx.set_line_cap(cairo.LINE_CAP_ROUND)
+            ctx.stroke()
+            ctx.restore()
+    elif icon == "sweat":
+        drop = (k * 0.6) % 1.0
+        ctx.translate(r * 0.2, drop * r * 0.8)
+        ctx.move_to(0, -r)
+        ctx.curve_to(r * 0.7, -r * 0.1, r * 0.6, r * 0.6, 0, r * 0.6)
+        ctx.curve_to(-r * 0.6, r * 0.6, -r * 0.7, -r * 0.1, 0, -r)
+        outline_fill((0.55, 0.85, 1))
+    elif icon in ("sparkle", "stars"):
+        for j, (dx, dy, sc) in enumerate(((0, 0, 1), (-1.1, 0.5, 0.55), (1.0, 0.6, 0.5))):
+            ctx.save()
+            ctx.translate(dx * r, dy * r)
+            ctx.rotate(k * (2 if icon == "stars" else 0.6) + j)
+            sc *= 0.8 + 0.2 * math.sin(k * 9 + j * 2)
+            ctx.move_to(0, -r * sc)
+            for i in range(1, 8):
+                rr = r * sc if i % 2 == 0 else r * sc * 0.36
+                a = -math.pi / 2 + i * math.pi / 4
+                ctx.line_to(math.cos(a) * rr, math.sin(a) * rr)
+            ctx.close_path()
+            outline_fill((1, 0.85, 0.2))
+            ctx.restore()
+    ctx.restore()
+
+# ------------------------------------------------------------------ face ---
+
+def h_on_screen(s, sy, ih):
+    return abs(s * sy) * ih
+
+
+def _vowel(word):
+    """Nhóm khẩu hình theo nguyên âm chính của từ: a (mở to), o (tròn), e (dẹt), m (khép môi)."""
+    import unicodedata
+    w = unicodedata.normalize("NFD", word.lower())
+    w = "".join(ch for ch in w if unicodedata.category(ch) != "Mn").replace("đ", "d")
+    vs = [ch for ch in w if ch in "aeiouy"]
+    if not vs:
+        return "m"
+    main = vs[len(vs) // 2] if len(vs) > 2 else vs[-1] if len(vs) == 2 and vs[0] in "iuy" else vs[0]
+    return {"a": "a", "o": "o", "u": "o", "e": "e", "i": "e", "y": "e"}[main]
+
+
+MOODS = (("o", ("shock", "surpris", "scare", "wow", "fear", "amaz", "gasp")),
+         ("frown", ("sad", "cry", "worr", "angry", "mad", "upset", "tired", "sick", "disappoint")),
+         ("grin", ("happy", "laugh", "excit", "joy", "proud", "cheer", "love", "smile")),
+         ("flat", ("think", "confus", "bored", "serious", "doubt", "sleep")))
+
+
+def _mood(expr):
+    for m, keys in MOODS:
+        if any(k in expr for k in keys):
+            return m
+    return "smile"
+
+
+def draw_face(ctx, fc, iw, ih, t, seed, talk, word, expr):
+    """Vẽ miệng nhép theo giọng (và chớp mắt) lên ảnh nhân vật, toạ độ theo pixel ảnh."""
+    skin = _hex(fc.get("skin", "#F2C9A0"))
+    ink = (0.16, 0.08, 0.08)
+    mx, my = fc["mouth"][0] * iw, fc["mouth"][1] * ih
+    mw = max(6.0, float(fc.get("mouth_width", 0.12)) * iw)
+    mood = _mood(expr)
+    # --- chớp mắt mỗi ~3-5 giây
+    eyes = fc.get("eyes") or []
+    period = 3.4 + (seed % 1.7)
+    ph = (t + seed) % period
+    blink = math.sin(ph / 0.16 * math.pi) if ph < 0.16 else 0.0
+    if blink > 0.05 and len(eyes) == 2:
+        for ex, ey, er in eyes:
+            ex, ey, er = ex * iw, ey * ih, max(3.0, er * iw)
+            ctx.save()
+            ctx.arc(ex, ey, er * 1.25, 0, 2 * math.pi)
+            ctx.clip()
+            lid = ey - er * 1.3 + er * 2.5 * blink
+            ctx.rectangle(ex - er * 1.4, ey - er * 1.4, er * 2.8, lid - (ey - er * 1.4))
+            ctx.set_source_rgb(*skin)
+            ctx.fill()
+            ctx.restore()
+            if blink > 0.6:
+                ctx.set_source_rgb(*ink)
+                ctx.set_line_width(max(1.5, er * 0.28))
+                ctx.set_line_cap(cairo.LINE_CAP_ROUND)
+                ctx.move_to(ex - er, lid - er * 0.1)
+                ctx.curve_to(ex - er * 0.4, lid + er * 0.35, ex + er * 0.4, lid + er * 0.35, ex + er, lid - er * 0.1)
+                ctx.stroke()
+    # --- xoá miệng gốc (nếu có) bằng màu da
+    if fc.get("has_mouth", True):
+        ctx.save()
+        ctx.translate(mx, my)
+        ctx.scale(1, 0.62)
+        ctx.arc(0, 0, mw * 0.62, 0, 2 * math.pi)
+        ctx.restore()
+        ctx.set_source_rgb(*skin)
+        ctx.fill()
+    # --- hình miệng
+    op = clamp(talk * 1.25)
+    if op < 0.12 and mood in ("o",):
+        op = 0.45
+    v = _vowel(word) if op >= 0.12 else "m"
+    if mood == "o" and op < 0.5:
+        v = "o"
+    lw = max(1.5, mw * 0.085)
+    ctx.save()
+    ctx.translate(mx, my)
+    ctx.set_line_join(cairo.LINE_JOIN_ROUND)
+    ctx.set_line_cap(cairo.LINE_CAP_ROUND)
+    if v == "m" or op < 0.12:
+        # môi khép: cười / mếu / thẳng
+        curve = {"smile": 0.28, "grin": 0.4, "frown": -0.3, "flat": 0.04, "o": 0.1}[mood]
+        half = mw * (0.5 if mood != "grin" else 0.58)
+        if mood == "grin":  # cười tươi miệng mở hình bán nguyệt
+            ctx.move_to(-half, -mw * 0.05)
+            ctx.curve_to(-half * 0.6, mw * 0.55, half * 0.6, mw * 0.55, half, -mw * 0.05)
+            ctx.close_path()
+            _fill_mouth(ctx, mw, ink, teeth=True)
+        else:
+            ctx.move_to(-half, -curve * mw * 0.3)
+            ctx.curve_to(-half * 0.4, curve * mw * 0.55, half * 0.4, curve * mw * 0.55, half, -curve * mw * 0.3)
+            ctx.set_source_rgb(*ink)
+            ctx.set_line_width(lw)
+            ctx.stroke()
+    else:
+        # mở theo nguyên âm, độ mở theo âm lượng
+        wf, hf = {"a": (0.95, 0.75), "o": (0.55, 0.8), "e": (1.05, 0.38)}[v]
+        if mood == "frown":
+            hf *= 0.8
+        hw = mw * 0.5 * wf * (0.85 + 0.15 * op)
+        hh = mw * hf * (0.25 + 0.75 * op)
+        top = -hh * 0.35
+        bot = hh * 0.65
+        smile = mw * (0.08 if mood in ("smile", "grin") else -0.06 if mood == "frown" else 0)
+        ctx.move_to(-hw, -smile)
+        ctx.curve_to(-hw * 0.7, top - smile * 0.3, hw * 0.7, top - smile * 0.3, hw, -smile)
+        ctx.curve_to(hw * 0.8, bot, -hw * 0.8, bot, -hw, -smile)
+        ctx.close_path()
+        _fill_mouth(ctx, mw, ink, teeth=v in ("a", "e") and op > 0.35)
+    ctx.restore()
+
+
+def _fill_mouth(ctx, mw, ink, teeth):
+    path = ctx.copy_path()
+    ctx.set_source_rgb(0.36, 0.08, 0.12)
+    ctx.fill_preserve()
+    ctx.save()
+    ctx.clip()
+    x0, y0, x1, y1 = ctx.clip_extents()
+    ctx.set_source_rgb(0.98, 0.45, 0.5)  # lưỡi
+    ctx.save()
+    ctx.translate((x0 + x1) / 2, y1)
+    ctx.scale(1, 0.55)
+    ctx.arc(0, 0, (x1 - x0) * 0.36, 0, 2 * math.pi)
+    ctx.restore()
+    ctx.fill()
+    if teeth:
+        ctx.set_source_rgb(1, 1, 1)
+        ctx.rectangle(x0, y0, x1 - x0, (y1 - y0) * 0.22)
+        ctx.fill()
+    ctx.restore()
+    ctx.new_path()
+    ctx.append_path(path)
+    ctx.set_source_rgb(*ink)
+    ctx.set_line_width(max(1.5, mw * 0.08))
+    ctx.stroke()
+
 
 def _rounded(ctx, x, y, w, h, r):
     ctx.new_sub_path()
@@ -316,6 +637,9 @@ class Renderer:
         self.dof = {s.get("id"): bool(s.get("dof")) for s in film.film.get("stages", [])}
         self.speakers = [sc.get("speaker") for sc in film.film["scenes"]]
         self._cur_view = None
+        self.cast = {c.get("id"): c for c in film.film.get("cast", [])}
+        self.faces = {}
+        self.word_starts = [w[0] for w in film.words]
 
     # -- camera
     def _view(self, sid, t, offset=(0, 0)):
@@ -323,7 +647,7 @@ class Renderer:
         sw, sh = surf.get_width(), surf.get_height()
         cx, cy, z = self.f.camera_at(t)
         zmin = max(self.W / sw, self.H / sh) * 1.001
-        z = max(z, zmin)
+        z = max(z, zmin) * (1 + 0.075 * self.f.punch_at(t))
         vw, vh = self.W / z, self.H / z
         px = clamp(cx * sw, vw / 2, sw - vw / 2) + offset[0] * vw
         py = clamp(cy * sh, vh / 2, sh - vh / 2) + offset[1] * vh
@@ -361,13 +685,43 @@ class Renderer:
                 st = obj_state(o, t, self.assets)
                 objs.append((st["y"], oid, o, st))
         objs.sort(key=lambda a: a[0])
+        tops = {}
         for _, oid, o, st in objs:
-            self._draw_obj(ctx, o, st, t, sw, sh)
+            top = self._draw_obj(ctx, o, st, t, sw, sh)
+            if top:
+                tops[oid] = top
+        for (tr, oid, icon) in self.f.reactions:
+            if 0 <= t - tr < 1.6 and oid in tops:
+                draw_reaction(ctx, icon, t - tr, *tops[oid])
         for (te, ev, tend, g) in self.f.overlays:
             if te <= t < tend:
                 self._draw_overlay(ctx, ev, t - te, tend - t, sw, sh, view[5])
         ctx.restore()
         return view
+
+    def _face(self, oid, key):
+        if key not in self.faces:
+            c = self.cast.get(oid)
+            info = None
+            if c is not None:
+                ov = (c.get("faces") or {}).get(key.split(":", 1)[1] if ":" in key else "base")
+                try:
+                    info = FACE.locate(self.assets[key], ov)
+                except Exception as e:  # không có mặt cũng không sao, chỉ không nhép miệng
+                    print(f"[face] {key}: {e}")
+                if info and not info.get("face"):
+                    info = None
+            self.faces[key] = info
+        return self.faces[key]
+
+    def _word_at(self, t, si):
+        import bisect
+        i = bisect.bisect_right(self.word_starts, t) - 1
+        if i >= 0:
+            a, b, w, wsi = self.f.words[i]
+            if wsi == si and t < b + 0.08:
+                return w
+        return ""
 
     def _draw_obj(self, ctx, o, st, t, sw, sh):
         key = o["id"]
@@ -379,27 +733,33 @@ class Renderer:
         iw, ih = surf.get_width(), surf.get_height()
         h_px = st["size"] * sh  # cao theo tỉ lệ chiều cao sân khấu
         s = h_px / ih
-        # thở / nhún khi đang nói
         seed = (hash(o["id"]) % 100) / 10
         breathe = 1 + 0.014 * math.sin(t * 2.6 + seed)
         si = next((i for i, (a, b, _) in enumerate(self.f.scene_spans) if a <= t < b), 0)
-        talk = 0.0
+        talk, word = 0.0, ""
         if self.speakers[si] == o["id"]:
             f = int(t * FPS)
             talk = self.env[f] if f < len(self.env) else 0
-        sx = st["sx"] * (1 - 0.025 * talk)
-        sy = st["sy"] * breathe * (1 + 0.05 * talk)
+            word = self._word_at(t, si)
+        sx = st["sx"] * (1 - 0.02 * talk)
+        sy = st["sy"] * breathe * (1 + 0.035 * talk)
+        # lắc lư nhẹ quanh bàn chân (sống động, không cứng đơ) + gật gù theo nhịp nói
+        lean = st["lean"] + 0.022 * math.sin(t * 1.5 + seed) + 0.03 * talk * math.sin(t * 9 + seed)
         x = st["x"] * sw + st["dx"] * self.W
         y = st["y"] * sh + st["dy"] * self.H
         # quá nhỏ hoặc trong suốt (đầu hiệu ứng pop/cuối exit): bỏ qua, tránh ma trận suy biến làm cairo lỗi
         if st["alpha"] <= 0.01 or abs(s * sx) * iw < 1 or abs(s * sy) * ih < 1:
             return
-        if not all(map(math.isfinite, (x, y, sx, sy, s, st["rot"]))):
+        if not all(map(math.isfinite, (x, y, sx, sy, s, st["rot"], lean))):
             return
-        self._paint_obj(ctx, surf, iw, ih, s, sx, sy, x, y, st, t, seed)
+        fc = self._face(o["id"], key)
+        mood = (st["expr"] or "").lower()
+        self._paint_obj(ctx, surf, iw, ih, s, sx, sy, x, y, st, t, seed, lean, fc, talk, word, mood)
+        hh = h_px * sy
+        return (x - lean * hh * 0.8 + iw * s * 0.18, y - hh, hh)
 
-    def _paint_obj(self, ctx, surf, iw, ih, s, sx, sy, x, y, st, t, seed):
-        sway = 1.2 * math.sin(t * 1.7 + seed)
+    def _paint_obj(self, ctx, surf, iw, ih, s, sx, sy, x, y, st, t, seed, lean=0.0, fc=None,
+                   talk=0.0, word="", mood=""):
         ctx.save()
         # bóng đổ dưới chân
         ctx.save()
@@ -410,7 +770,8 @@ class Renderer:
         ctx.set_source_rgba(0, 0, 0, 0.22 * st["alpha"])
         ctx.fill()
         ctx.translate(x, y)
-        ctx.rotate(math.radians(st["rot"] + sway))
+        ctx.rotate(math.radians(st["rot"]))
+        ctx.transform(cairo.Matrix(1, 0, -lean, 1, 0, 0))  # nghiêng phần trên, giữ chân đứng yên
         ctx.scale(s * sx * (-1 if st["flip"] else 1), s * sy)
         ax, ay = abs(s * sx), abs(s * sy)
         scale_ok = min(ax, ay) / max(ax, ay) > 0.15  # co méo quá mức (spin/squash)
@@ -421,6 +782,9 @@ class Renderer:
             # FILTER_GOOD với tỉ lệ co méo cực đoan làm cairo "out of memory" (lỗi run 42577402563)
             ctx.get_source().set_filter(cairo.FILTER_GOOD if scale_ok else cairo.FILTER_BILINEAR)
             ctx.paint_with_alpha(st["alpha"] / n * (1.6 if n > 1 else 1))
+        if fc and n == 1 and st["alpha"] > 0.6 and h_on_screen(s, sy, ih) > 60:
+            ctx.translate(-iw / 2, -ih)
+            draw_face(ctx, fc, iw, ih, t, seed, talk, word, mood)
         ctx.restore()
 
     def _draw_overlay(self, ctx, ev, k, left, sw, sh, z):
@@ -604,38 +968,105 @@ class Renderer:
         ctx.restore()
 
     # -- phụ đề 1-3 từ khớp giọng
+    def ambience(self, ctx, t):
+        """Hạt sáng trôi nhẹ (chiều sâu), viền tối (tập trung mắt), chớp sáng ở từ khoá."""
+        if not hasattr(self, "_parts"):
+            rnd = random.Random(11)
+            self._parts = [(rnd.random(), rnd.random(), rnd.uniform(0.004, 0.014), rnd.uniform(0.2, 1.0),
+                            rnd.uniform(0, 6.28)) for _ in range(26)]
+            g = cairo.RadialGradient(self.W / 2, self.H * 0.45, min(self.W, self.H) * 0.35,
+                                     self.W / 2, self.H * 0.45, max(self.W, self.H) * 0.8)
+            g.add_color_stop_rgba(0, 0, 0, 0, 0)
+            g.add_color_stop_rgba(1, 0.03, 0.02, 0.08, 0.42)
+            self._vig = cairo.ImageSurface(cairo.FORMAT_ARGB32, self.W, self.H)
+            c = cairo.Context(self._vig)
+            c.set_source(g)
+            c.paint()
+            self._dot = cairo.ImageSurface(cairo.FORMAT_ARGB32, 64, 64)  # hạt sáng vẽ sẵn
+            c = cairo.Context(self._dot)
+            g = cairo.RadialGradient(32, 32, 0, 32, 32, 32)
+            g.add_color_stop_rgba(0, 1, 0.97, 0.85, 1)
+            g.add_color_stop_rgba(1, 1, 0.97, 0.85, 0)
+            c.set_source(g)
+            c.paint()
+        cam = self.f.camera_at(t)
+        D = max(self.W, self.H)
+        for (px, py, r, depth, ph) in self._parts:
+            x = ((px - cam[0] * 0.25 * depth + t * 0.006 * depth) % 1.0) * self.W
+            y = ((py - t * 0.012 * depth + math.sin(t * 0.7 + ph) * 0.01) % 1.0) * self.H
+            a = 0.10 + 0.08 * math.sin(t * 1.3 + ph)
+            rr = r * D * (0.6 + depth)
+            ctx.save()
+            ctx.translate(x - rr, y - rr)
+            ctx.scale(rr / 32, rr / 32)
+            ctx.set_source_surface(self._dot, 0, 0)
+            ctx.paint_with_alpha(a)
+            ctx.restore()
+        ctx.set_source_surface(self._vig, 0, 0)
+        ctx.paint()
+        pk = self.f.punch_at(t)
+        if pk > 0.02:
+            ctx.set_source_rgba(1, 1, 1, 0.10 * pk)
+            ctx.paint()
+
     def captions(self, ctx, t):
+        """Phụ đề động: từng chữ bật ra đúng lúc nói, chữ đang đọc vàng, từ khoá to + màu nổi + nghiêng."""
         groups = self._groups()
-        g = next((g for g in groups if g[0] <= t < g[1]), None)
+        g = next((g for g in groups if g[0] - 0.05 <= t < g[1]), None)
         if not g:
             return
-        start, end, words, cur_idx = g[0], g[1], g[2], g[3]
-        cur = next((i for i, (a, b, w) in enumerate(words) if a <= t < b), None)
+        words = g[2]
         vertical = self.H > self.W
-        size = (64 if vertical else 58) * (self.W / 1080 if vertical else self.H / 1080)
-        y = self.H * (0.74 if vertical else 0.87)
-        p = (t - start) / 0.12
-        s = 0.8 + 0.2 * back(p, 2.5) if p < 1 else 1.0
-        ctx.save()
-        ctx.select_font_face(SV.FONT, cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_BOLD)
-        ctx.set_font_size(size)
+        base = (74 if vertical else 62) * (self.W / 1080 if vertical else self.H / 1080)
+        y = self.H * (0.73 if vertical else 0.86)
         sep = "" if SV.LANG in SV.NO_SPACE_LANGS else " "
-        parts = [w for _, _, w in words]
-        widths = [ctx.text_extents(w + sep).x_advance for w in parts]
+        ctx.save()
+        ctx.select_font_face(CAPTION_FONT or SV.FONT, cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_BOLD)
+        sizes, widths = [], []
+        for (a, b, w, wi) in words:
+            fs = base * (1.32 if wi in self.f.emph else 1.0)
+            ctx.set_font_size(fs)
+            sizes.append(fs)
+            widths.append(ctx.text_extents(w.upper()).x_advance + (fs * 0.42 if sep else fs * 0.08))
         total = sum(widths)
-        ctx.translate(self.W / 2, y)
-        ctx.scale(s, s)
-        x = -total / 2
-        for i, (w, wd) in enumerate(zip(parts, widths)):
-            ctx.move_to(x, 0)
-            ctx.text_path(w)
-            ctx.set_source_rgba(0, 0, 0, 0.9)
-            ctx.set_line_width(size * 0.2)
+        maxw = self.W * 0.9
+        k = min(1.0, maxw / max(total, 1))
+        x = self.W / 2 - total * k / 2
+        for (a, b, w, wi), fs, wd in zip(words, sizes, widths):
+            if t < a - 0.03:  # chưa nói tới: chưa hiện
+                x += wd * k
+                continue
+            p = (t - a + 0.03) / 0.16
+            sc = (0.55 + 0.45 * back(clamp(p), 2.8)) if p < 1 else 1.0
+            emph = wi in self.f.emph
+            cur = a <= t < b + 0.05
+            txt = w.upper()
+            ctx.save()
+            ctx.set_font_size(fs * k)
+            ext = ctx.text_extents(txt)
+            cx, cy = x + ext.x_advance / 2, y - (fs * k) * 0.35
+            ctx.translate(cx, cy)
+            ctx.rotate(math.radians(-4 if emph else 0))
+            ctx.scale(sc * (1.08 if cur else 1), sc * (1.08 if cur else 1))
+            ctx.translate(-ext.x_advance / 2, (fs * k) * 0.35)
+            # bóng đổ + viền dày
+            ctx.move_to(fs * k * 0.05, fs * k * 0.07)
+            ctx.text_path(txt)
+            ctx.set_source_rgba(0, 0, 0, 0.55)
+            ctx.set_line_width(fs * k * 0.24)
             ctx.set_line_join(cairo.LINE_JOIN_ROUND)
             ctx.stroke_preserve()
-            ctx.set_source_rgb(*((1, 0.86, 0.1) if i == cur else (1, 1, 1)))
             ctx.fill()
-            x += wd
+            ctx.move_to(0, 0)
+            ctx.text_path(txt)
+            ctx.set_source_rgb(0.05, 0.04, 0.08)
+            ctx.set_line_width(fs * k * 0.2)
+            ctx.stroke_preserve()
+            col = (0.36, 1.0, 0.45) if emph else (1, 0.86, 0.1) if cur else (1, 1, 1)
+            ctx.set_source_rgb(*col)
+            ctx.fill()
+            ctx.restore()
+            x += wd * k
         ctx.restore()
 
     def _groups(self):
@@ -643,10 +1074,13 @@ class Renderer:
             return self._g
         out, cur = [], []
         maxw = 3 if self.H > self.W else 4
-        for a, b, w, si in self.f.words:
-            cur.append((a, b, w))
+        for wi, (a, b, w, si) in enumerate(self.f.words):
+            if cur and si != self.f.words[wi - 1][3]:  # không gộp chữ của 2 cảnh
+                out.append(cur)
+                cur = []
+            cur.append((a, b, w, wi))
             chars = sum(len(x[2]) for x in cur)
-            if len(cur) >= maxw or chars > 16 or w[-1:] in ",.!?;:…" :
+            if len(cur) >= maxw or chars > 15 or w[-1:] in ",.!?;:…" or wi in self.f.emph:
                 out.append(cur)
                 cur = []
         if cur:
@@ -679,6 +1113,7 @@ class Renderer:
             ctx.save()
             self.draw_world(ctx, sid, t)
             ctx.restore()
+        self.ambience(ctx, t)
         self.captions(ctx, t)
         edge = min(t, self.f.total - t)
         if edge < 0.35:
@@ -718,6 +1153,10 @@ def sfx_events(film: Film):
         if kind and e.get("sfx", True) is not False:
             ev.append((t, e.get("sfx") if isinstance(e.get("sfx"), str) else kind,
                        0.55 if kind == "whoosh" else 0.8))
+    for t, oid, icon in film.reactions:
+        ev.append((t, "pop", 0.6))
+    for t in film.punches:
+        ev.append((t, "tick", 0.45))
     # whoosh cho những cú lướt camera lớn
     prev = None
     for (t, x, y, z, d) in film.cameras:
@@ -733,8 +1172,11 @@ def render(film_json, timings, assets, voice_wav, out_mp4, music=None, cwd=None,
     from scene_video import mouth_envelope
     import sfx
 
+    global CAPTION_FONT
     film = Film(film_json, timings, assets)
     W, H = SV.W, SV.H
+    fams = subprocess.run(["fc-list", ":", "family"], capture_output=True, text=True).stdout
+    CAPTION_FONT = next((f"{SV.FONT} {w}" for w in ("Black", "ExtraBold") if f"{SV.FONT} {w}" in fams), None)
     nframes = int(film.total * FPS)
     env = mouth_envelope(voice_wav, nframes) if voice_wav and Path(voice_wav).exists() else [0] * nframes
     r = Renderer(film, assets, env)
@@ -762,11 +1204,17 @@ def render(film_json, timings, assets, voice_wav, out_mp4, music=None, cwd=None,
     sfx_wav = work / "sfx.wav"
     sfx.build_track(sfx_events(film), film.total, sfx_wav)
     vf = "null"
+    if not music and film_json.get("music", "upbeat") != "none":
+        import music as MUSIC
+        music = work / "music.wav"
+        MUSIC.build(film.total, music, film_json.get("music", "upbeat"))
     inputs = ["-i", str(Path(voice_wav).resolve()), "-i", str(sfx_wav.resolve())]
     mix = "[1:a]volume=1.0[v];[2:a]volume=0.9[s];[v][s]amix=inputs=2:duration=first:normalize=0"
     if music:
-        inputs += ["-stream_loop", "-1", "-i", str(music)]
-        mix = ("[1:a]volume=1.0[v];[2:a]volume=0.9[s];[3:a]volume=0.10[m];"
+        inputs += ["-stream_loop", "-1", "-i", str(Path(music).resolve())]
+        # nhạc nền tự nhỏ lại khi có lời (sidechain ducking)
+        mix = ("[1:a]volume=1.0,asplit=2[v][vk];[2:a]volume=0.9[s];[3:a]volume=0.42[m0];"
+               "[m0][vk]sidechaincompress=threshold=0.02:ratio=6:attack=15:release=350[m];"
                "[v][s][m]amix=inputs=3:duration=first:normalize=0")
     cmd = ["ffmpeg", "-y", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "bgra",
            "-s", f"{W}x{H}", "-r", str(FPS), "-i", "-", *inputs,

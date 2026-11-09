@@ -63,3 +63,8 @@ Dựng như video motion graphics chuyên nghiệp, áp dụng cho mọi chủ �
 - Motion blur, xóa phông, chuyển cảnh whip/zoom, phụ đề 1–3 từ (từ đang đọc tô vàng), âm thanh hiệu ứng.
 Định dạng kịch bản: `prompts/motion_spec.md`, ví dụ `examples/sample_motion.json`.
 Chọn `style = doodle/shirt` để dùng lại kiểu người que cũ.
+
+
+## Đầu ra
+Mỗi lần chạy tạo artifact **youtube**: `video.mp4`, `thumbnail.jpg` (1280×720 thiết kế riêng), `title.txt`,
+`description.txt` (có hashtag), `tags.txt`, `metadata.json` — tải về là đăng lên YouTube được ngay.

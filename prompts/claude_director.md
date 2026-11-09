@@ -20,10 +20,11 @@ In ra số cảnh, số giây và số từ mỗi cảnh.
 - Đúng ngôn ngữ, đúng số cảnh, nội dung đúng sự thật, cụ thể, kể như câu chuyện có hook và cái kết đã.
 - Nghĩ như đạo diễn: mỗi câu nói cần HÌNH gì để người xem hiểu ngay? Chọn 1–3 sân khấu dùng lâu, 1–3 nhân vật
   có 2–3 biểu cảm, 6–14 đạo cụ cụ thể. Camera luôn di chuyển; cứ 0,5–1,5 giây lại có thay đổi.
+- Viết kỹ `title` (≤70 ký tự, gây tò mò), `description` chuẩn SEO, `hashtags`, `tags`, `thumbnail` (chữ 2–4 từ, nhân vật + biểu cảm mạnh nhất, đạo cụ) — đây là những gì đăng lên YouTube.
 - `art_style` hợp chủ đề (ví dụ trẻ em: chibi pastel; công nghệ: flat vector neon; lịch sử: tranh minh hoạ cổ điển).
 
 ## Bước 3. Tự chấm và sửa (2 vòng)
-Chấm thang 10: hook 3 giây đầu, độ chính xác, giá trị/độ hay, nhịp kể, độ "sống" của hình (mật độ sự kiện,
+Chấm thang 10: hook 3 giây đầu (câu 1 ≤ 10 từ, gây sốc/tò mò), vòng lặp tò mò được mở rồi đóng, mỗi 8–10 giây có điều bất ngờ, độ chính xác, giá trị/độ hay, nhịp kể, độ "sống" của hình (mật độ sự kiện,
 camera, biểu cảm), độ rõ ràng (hình minh hoạ đúng ý nói), ngôn ngữ tự nhiên. Ghi điểm + lý do vào
 `output/review_notes.md`, sửa `script.json`. Lặp đến khi mọi tiêu chí ≥ 8 hoặc đã 2 vòng.
 
@@ -40,6 +41,9 @@ Rồi dùng công cụ Read để XEM: `output/review/assets_*.jpg` (mọi nhân
 - Sân khấu: có người, có chữ, quá rối, quá tối, không hợp nội dung → viết lại prompt.
 - Bố cục: nhân vật/nhãn/mũi tên nằm ngoài khung hình, chồng lên nhau, quá to/quá nhỏ, che phụ đề
   → sửa x, y, size, camera.
+- Khẩu hình: engine tự vẽ miệng nhép theo giọng và chớp mắt. Trong `scenes_*.jpg` kiểm tra miệng nằm đúng
+  chỗ trên mặt, không bị hai miệng. Sai thì thêm `faces` cho nhân vật đó (xem motion_spec mục 10), hoặc
+  viết lại prompt cho mặt nhìn thẳng, miệng nhỏ khép.
 - `events_per_second` < 0.7 → thêm sự kiện. Tổng thời lượng lệch > 20% so với yêu cầu → sửa lời dẫn.
 Sửa `script.json` rồi chạy lại lệnh Bước 4 (chỉ phần đổi mới được tạo lại). Ghi những gì đã sửa vào
 `output/review_notes.md`.

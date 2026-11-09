@@ -51,6 +51,7 @@ def vertical_of(aspect):
 def run_motion(a, n_scenes, size, vertical, font, font_path):
     """Quy trình dựng chuyển động: kịch bản → tài nguyên AI → giọng đọc + mốc từng từ → dựng."""
     import motion
+    import publish
     import motion_script
     from assets import make_cutout, make_stage
     from tts import audio_duration, synthesize_words
@@ -137,14 +138,20 @@ def run_motion(a, n_scenes, size, vertical, font, font_path):
     motion.render(film, timings, assets, work / "voice.wav", video,
                   music=random.choice(music).resolve() if music else None, cwd=work)
     thumb_src = frames[1] if len(frames) > 1 else frames[0]
-    make_thumbnail(thumb_src, film["title"], out / f"{name}_thumbnail.jpg", scene_video.L["thumb"],
-                   font_path, a.language in scene_video.NO_SPACE_LANGS)
-    meta = {k: film[k] for k in ("title", "description", "tags")}
-    if vertical and "#Shorts" not in meta["description"]:
-        meta["description"] += "\n\n#Shorts"
-    meta["settings"] = {k: v for k, v in vars(a).items() if k not in ("script_file", "out", "offline")}
+    thumb = out / f"{name}_thumbnail.jpg"
+    try:
+        publish.design_thumbnail(film, assets, thumb, font_path,
+                                 a.language in scene_video.NO_SPACE_LANGS, fallback_frame=thumb_src)
+    except Exception as e:  # thumbnail thiết kế lỗi thì dùng kiểu cũ (khung hình + chữ)
+        print(f"[thumb] lỗi {e}, dùng thumbnail đơn giản")
+        make_thumbnail(thumb_src, film["title"], thumb, (1280, 720),
+                       font_path, a.language in scene_video.NO_SPACE_LANGS)
+    settings = {k: v for k, v in vars(a).items() if k not in ("script_file", "out", "offline")}
+    meta = {"title": film["title"], "description": publish.description_text(film, vertical),
+            "tags": publish.tags_list(film), "settings": settings}
     (out / f"{name}.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"XONG: {video} ({total:.0f} giây)")
+    yt = publish.package(out, film, video, thumb, vertical, a.language, settings)
+    print(f"XONG: {video} ({total:.0f} giây) | gói đăng YouTube: {yt}")
 
 
 def main():

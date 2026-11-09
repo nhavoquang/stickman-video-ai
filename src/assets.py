@@ -19,6 +19,9 @@ URL = "https://image.pollinations.ai/prompt/{prompt}"
 FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 CUTOUT_SUFFIX = ("full body, single subject, centered, isolated on a plain pure white background, "
                  "no background scenery, no shadow, no text, no watermark")
+# miệng do engine tự vẽ và nhép theo giọng, nên ảnh gốc chỉ cần miệng nhỏ khép kín
+ACTOR_FACE = ("front view facing the camera, clearly visible simple cute face, big expressive eyes, "
+              "small closed mouth, ")
 STAGE_SUFFIX = ("wide establishing shot, detailed environment, no people, no characters, no text, "
                 "no letters, no watermark, clean composition with open space in the middle")
 LOGO_CROP = 0.11  # phần đáy ảnh (có logo) bị cắt bỏ
@@ -107,7 +110,8 @@ def sticker(img: Image.Image, border=10) -> Image.Image:
 # ------------------------------------------------------------------ tạo tài nguyên ---
 
 def make_cutout(prompt: str, style: str, out_dir: Path, kind="actor", offline=False, label="") -> Path:
-    full = f"{style}. {prompt}. {CUTOUT_SUFFIX}"
+    extra = ACTOR_FACE if kind == "actor" else ""
+    full = f"{style}. {prompt}. {extra}{CUTOUT_SUFFIX}"
     key = _key(full, kind)
     out = out_dir / f"{kind}_{key}.png"
     if out.exists():
@@ -155,15 +159,29 @@ def make_stage(prompt: str, style: str, out_dir: Path, size, offline=False) -> P
 
 def _placeholder(kind, label, key):
     rnd = random.Random(key)
-    if kind == "actor":
+    if kind == "actor":  # nhân vật chibi đơn giản (đầu to, mắt, miệng nhỏ) để test offline
         import cairo
-        from character import draw_character, pose_at
-        s = cairo.ImageSurface(cairo.FORMAT_ARGB32, 520, 760)
+        W, H = 520, 760
+        s = cairo.ImageSurface(cairo.FORMAT_ARGB32, W, H)
         c = cairo.Context(s)
-        expr = "surprised" if "shock" in label or "surpris" in label else "happy"
-        draw_character(c, pose_at(rnd.choice(["wave", "talk", "point", "idle"]), 0.4), 260, 740, 1.0,
-                       "shirt", {"expression": expr, "mouth": 0.3})
-        img = Image.frombuffer("RGBA", (520, 760), bytes(s.get_data()), "raw", "BGRA", 0, 1)
+        shirt = [rnd.random() * 0.6 + 0.2 for _ in range(3)]
+        ink = (0.12, 0.1, 0.12)
+        c.set_line_width(10)
+        for lx in (205, 315):  # chân
+            c.rectangle(lx - 28, 560, 56, 170)
+            c.set_source_rgb(0.25, 0.25, 0.35); c.fill_preserve(); c.set_source_rgb(*ink); c.stroke()
+        _rr(c, 140, 380, 240, 220, 60)
+        c.set_source_rgb(*shirt); c.fill_preserve(); c.set_source_rgb(*ink); c.stroke()
+        c.arc(260, 230, 165, 0, 2 * math.pi)
+        c.set_source_rgb(0.98, 0.82, 0.68); c.fill_preserve(); c.set_source_rgb(*ink); c.stroke()
+        c.arc(260, 175, 168, math.pi * 1.05, math.pi * 1.95)  # tóc
+        c.close_path(); c.set_source_rgb(0.35, 0.2, 0.12); c.fill()
+        for ex in (200, 320):
+            c.arc(ex, 235, 24, 0, 2 * math.pi); c.set_source_rgb(*ink); c.fill()
+            c.arc(ex + 8, 226, 8, 0, 2 * math.pi); c.set_source_rgb(1, 1, 1); c.fill()
+        c.move_to(235, 300); c.curve_to(250, 312, 270, 312, 285, 300)
+        c.set_source_rgb(*ink); c.set_line_width(7); c.stroke()
+        img = Image.frombuffer("RGBA", (W, H), bytes(s.get_data()), "raw", "BGRA", 0, 1).copy()
         return sticker(img)
     col = tuple(rnd.randint(60, 230) for _ in range(3))
     img = Image.new("RGBA", (360, 360), (0, 0, 0, 0))
@@ -175,6 +193,15 @@ def _placeholder(kind, label, key):
         f = ImageFont.load_default()
     d.text((180, 180), label[:12], fill="white", font=f, anchor="mm", stroke_width=3, stroke_fill="black")
     return sticker(img)
+
+
+def _rr(c, x, y, w, h, r):
+    c.new_sub_path()
+    c.arc(x + w - r, y + r, r, -math.pi / 2, 0)
+    c.arc(x + w - r, y + h - r, r, 0, math.pi / 2)
+    c.arc(x + r, y + h - r, r, math.pi / 2, math.pi)
+    c.arc(x + r, y + r, r, math.pi, math.pi * 1.5)
+    c.close_path()
 
 
 def _placeholder_stage(size, key):

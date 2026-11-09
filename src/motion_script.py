@@ -11,7 +11,7 @@ from script_gen import API_URL, available_models
 ROOT = Path(__file__).resolve().parent.parent
 SPEC = (ROOT / "prompts" / "motion_spec.md").read_text(encoding="utf-8")
 DOS = {"camera", "enter", "move", "exit", "action", "expr", "label", "arrow", "line", "highlight",
-       "burst", "flow", "shake"}
+       "burst", "flow", "shake", "react"}
 
 
 def build_prompt(topic, plan, notes=""):
@@ -78,6 +78,12 @@ def clean(film):
     film.setdefault("title", "Video")
     film.setdefault("description", "")
     film.setdefault("tags", [])
+    film["title"] = str(film["title"]).strip()[:100]
+    film["tags"] = [str(t).strip().lstrip("#") for t in film.get("tags", []) if str(t).strip()][:20]
+    film["hashtags"] = ["#" + str(h).strip().lstrip("#").replace(" ", "") for h in film.get("hashtags", [])
+                        if str(h).strip().lstrip("#")][:5]
+    if not isinstance(film.get("thumbnail"), dict):
+        film["thumbnail"] = {}
     film.setdefault("art_style", "cute 2D cartoon, bold clean outlines, soft cel shading, vibrant colors")
     film["cast"] = [c for c in film.get("cast", []) if c.get("id") and c.get("prompt")]
     film["props"] = [p for p in film.get("props", []) if p.get("id") and p.get("prompt")]
