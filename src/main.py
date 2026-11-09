@@ -44,6 +44,109 @@ def scenes_for(duration: int) -> int:
     return max(3, min(60, round(duration / per)))
 
 
+def vertical_of(aspect):
+    return aspect == "9:16"
+
+
+def run_motion(a, n_scenes, size, vertical, font, font_path):
+    """Quy trình dựng chuyển động: kịch bản → tài nguyên AI → giọng đọc + mốc từng từ → dựng."""
+    import motion
+    import motion_script
+    from assets import make_cutout, make_stage
+    from tts import audio_duration, synthesize_words
+
+    per = a.duration / n_scenes
+    plan = {"scenes": n_scenes, "seconds_per_scene": round(per, 1), "words_per_scene_latin": round(per * 2.6),
+            "language": lang_info(a.language)[0], "aspect": a.aspect, "vertical": vertical,
+            "duration": a.duration}
+    if a.print_plan:
+        print(json.dumps(plan, ensure_ascii=False, indent=2))
+        return
+    if a.script_file:
+        film = motion_script.clean(json.loads(Path(a.script_file).read_text(encoding="utf-8")))
+    elif a.topic:
+        film = motion_script.generate(a.topic, plan, a.model, a.notes)
+    else:
+        raise SystemExit("Cần --topic hoặc --script-file")
+
+    out = Path(a.out)
+    work = out / "work"
+    adir = work / "assets"
+    adir.mkdir(parents=True, exist_ok=True)
+    (out / "script.json").write_text(json.dumps(film, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    # 1. tài nguyên hình (có cache theo prompt)
+    assets = {}
+    style = film["art_style"]
+    for key, kind, prompt in motion_script.asset_jobs(film):
+        if kind == "stage":
+            assets[key] = make_stage(prompt, style, adir, size, a.offline)
+        else:
+            assets[key] = make_cutout(prompt, style, adir, kind, a.offline, label=key)
+
+    # 2. giọng đọc + mốc thời gian từng từ
+    voice = voice_for(a.language, a.voice)
+    timings, wavs = [], []
+    for i, sc in enumerate(film["scenes"], 1):
+        vkey = h(sc["narration"], voice, a.rate, a.offline, "w")
+        mp3 = work / f"voice_{vkey}.mp3"
+        tfile = work / f"voice_{vkey}.times.json"
+        if mp3.exists() and tfile.exists():
+            adur, wt = audio_duration(mp3), [tuple(x) for x in json.loads(tfile.read_text())]
+        else:
+            adur, wt = synthesize_words(sc["narration"], mp3, voice, a.rate, a.offline)
+            tfile.write_text(json.dumps(wt))
+        dur = round(adur + 0.25, 2)
+        wav = work / f"voice_{vkey}.wav"
+        if not wav.exists():
+            subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(mp3), "-af", "apad",
+                            "-t", f"{dur:.2f}", "-ar", "44100", "-ac", "2", str(wav)], check=True)
+        timings.append((dur, wt))
+        wavs.append(wav)
+        print(f"--- Cảnh {i}/{len(film['scenes'])}: {dur:.1f}s, {len(sc['events'])} sự kiện")
+    (work / "voice.txt").write_text("".join(f"file '{w.name}'\n" for w in wavs))
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "concat", "-safe", "0",
+                    "-i", "voice.txt", "-c", "copy", "voice.wav"], check=True, cwd=work)
+
+    # 3. ảnh xem trước để duyệt
+    review = out / "review"
+    shutil.rmtree(review, ignore_errors=True)
+    frames = motion.render(film, timings, assets, work / "voice.wav", None, preview_dir=review / "frames",
+                           preview_only=True)
+    sheets = contact_sheets(frames, review / "scenes", per_sheet=12)
+    imgs = [v for k, v in assets.items()]
+    asset_sheets = contact_sheets([Path(x) for x in imgs], review / "assets", per_sheet=16, thumb_w=360)
+    total = sum(d for d, _ in timings)
+    report = {"total_seconds": round(total, 1), "target_seconds": a.duration,
+              "events": sum(len(s["events"]) for s in film["scenes"]),
+              "events_per_second": round(sum(len(s["events"]) for s in film["scenes"]) / max(total, 1), 2),
+              "scenes": [{"n": i + 1, "seconds": d, "stage": s["stage"], "events": len(s["events"])}
+                         for i, (s, (d, _)) in enumerate(zip(film["scenes"], timings))],
+              "assets": {k: str(v) for k, v in assets.items()},
+              "scene_sheets": [str(x) for x in sheets], "asset_sheets": [str(x) for x in asset_sheets]}
+    (review / "report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"[review] {len(frames)} khung xem trước, {len(assets)} tài nguyên, {total:.1f}s, "
+          f"{report['events_per_second']} sự kiện/giây")
+    if a.stage == "assets":
+        return
+
+    # 4. dựng video + thumbnail
+    music = sorted((ROOT / "music").glob("*.mp3"))
+    name = slugify(film["title"]) + ("-shorts" if vertical else "")
+    video = out / f"{name}.mp4"
+    motion.render(film, timings, assets, work / "voice.wav", video,
+                  music=random.choice(music).resolve() if music else None, cwd=work)
+    thumb_src = frames[1] if len(frames) > 1 else frames[0]
+    make_thumbnail(thumb_src, film["title"], out / f"{name}_thumbnail.jpg", scene_video.L["thumb"],
+                   font_path, a.language in scene_video.NO_SPACE_LANGS)
+    meta = {k: film[k] for k in ("title", "description", "tags")}
+    if vertical and "#Shorts" not in meta["description"]:
+        meta["description"] += "\n\n#Shorts"
+    meta["settings"] = {k: v for k, v in vars(a).items() if k not in ("script_file", "out", "offline")}
+    (out / f"{name}.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"XONG: {video} ({total:.0f} giây)")
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--topic", help="Chủ đề video")
@@ -54,7 +157,8 @@ def main():
     p.add_argument("--scenes", type=int, default=0, help="Số cảnh (0 = tự tính theo độ dài)")
     p.add_argument("--voice", default="nu", help="nu | nam | tên giọng Edge TTS")
     p.add_argument("--rate", default="+5%", help="Tốc độ đọc, ví dụ +10%")
-    p.add_argument("--style", default="doodle", help="doodle (nét đen) | shirt (áo xanh, nền màu)")
+    p.add_argument("--style", default="motion",
+                   help="motion (dựng chuyển động, mặc định) | doodle / shirt (người que cũ)")
     p.add_argument("--subtitles", default="on", choices=["on", "off"])
     p.add_argument("--notes", default="", help="Yêu cầu thêm cho kịch bản, ví dụ: hài hước, cho trẻ em")
     p.add_argument("--model", default="auto", help="auto = tự chọn model Gemini mới nhất")
@@ -64,14 +168,33 @@ def main():
     p.add_argument("--stage", default="all", choices=["all", "assets"],
                    help="assets = chỉ tạo ảnh nền + giọng đọc + ảnh xem trước (để duyệt), all = dựng video")
     p.add_argument("--print-plan", action="store_true", help="In số cảnh, số từ mỗi cảnh... rồi thoát")
+    p.add_argument("--renderer", default=None, choices=["motion", "classic"],
+                   help="motion = dựng chuyển động chuyên nghiệp (mặc định), classic = bản người que cũ")
     a = p.parse_args()
+    if a.renderer is None:
+        a.renderer = "classic" if a.style in ("doodle", "shirt") else "motion"
 
     font, font_path = font_for(a.language)
     scene_video.configure(a.aspect, a.language, font)
     size = scene_video.L["size"]
     vertical = size[1] > size[0]
-    n_scenes = a.scenes or scenes_for(a.duration)
+    if a.script_file and a.renderer == "motion":
+        try:
+            first = json.loads(Path(a.script_file).read_text(encoding="utf-8"))["scenes"][0]
+            if "events" not in first:
+                a.renderer = "classic"  # kịch bản kiểu cũ
+        except (OSError, ValueError, KeyError, IndexError):
+            pass
+    if a.renderer == "classic" and a.style not in ("doodle", "shirt"):
+        a.style = "doodle"
+    if a.renderer == "motion":
+        n_scenes = a.scenes or max(3, round(a.duration / (4.5 if vertical_of(a.aspect) else 5.5)))
+    else:
+        n_scenes = a.scenes or scenes_for(a.duration)
     print(f"[config] {a.language} | {a.aspect} {size[0]}x{size[1]} | ~{a.duration}s, {n_scenes} cảnh | font {font}")
+
+    if a.renderer == "motion":
+        return run_motion(a, n_scenes, size, vertical, font, font_path)
 
     if a.print_plan:
         per = a.duration / n_scenes

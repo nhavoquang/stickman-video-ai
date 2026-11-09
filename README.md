@@ -54,3 +54,12 @@ GEMINI_API_KEY=... python src/main.py --topic "Vì sao bầu trời màu xanh" -
 # Test không cần mạng:
 python src/main.py --script-file examples/sample_script.json --offline
 ```
+
+## Kiểu "motion" (mặc định)
+Dựng như video motion graphics chuyên nghiệp, áp dụng cho mọi chủ đề:
+- 1 sân khấu rộng (ảnh AI 1,5× khung hình), camera lướt/zoom liên tục có easing.
+- Nhân vật và đạo cụ là ảnh AI cắt nền (viền sticker), xuất hiện/di chuyển/nhún/lắc khớp từng từ đang nói.
+- Nhãn số liệu, mũi tên, vòng tròn đánh dấu, đường vẽ phát sáng, dòng chảy vật thể, pháo giấy.
+- Motion blur, xóa phông, chuyển cảnh whip/zoom, phụ đề 1–3 từ (từ đang đọc tô vàng), âm thanh hiệu ứng.
+Định dạng kịch bản: `prompts/motion_spec.md`, ví dụ `examples/sample_motion.json`.
+Chọn `style = doodle/shirt` để dùng lại kiểu người que cũ.

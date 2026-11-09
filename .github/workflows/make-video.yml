@@ -37,10 +37,10 @@ on:
         options: [nu, nam]
         default: nu
       style:
-        description: "Nhân vật: doodle = nét đen cổ điển, shirt = áo xanh nền màu"
+        description: "Kiểu video: motion = hoạt hình chuyển động chuyên nghiệp, doodle/shirt = người que cũ"
         type: choice
-        options: [doodle, shirt]
-        default: doodle
+        options: [motion, doodle, shirt]
+        default: motion
       rate:
         description: "Tốc độ đọc (vd -10%, +0%, +15%)"
         default: "+5%"
@@ -86,7 +86,7 @@ jobs:
       ASPECT: ${{ inputs.aspect || '16:9' }}
       DURATION: ${{ inputs.duration || '60' }}
       VOICE: ${{ inputs.voice || 'nu' }}
-      STYLE: ${{ inputs.style || 'doodle' }}
+      STYLE: ${{ inputs.style || 'motion' }}
       RATE: ${{ inputs.rate || '+5%' }}
       SUBTITLES: ${{ inputs.subtitles || 'on' }}
       NOTES: ${{ inputs.notes || '' }}
@@ -132,6 +132,8 @@ jobs:
           BASH_MAX_TIMEOUT_MS: "3600000"
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # cho phép lần chạy mẫu do commit tự kích hoạt (người chạy là bot github-actions)
+          allowed_bots: "github-actions,github-actions[bot]"
           prompt: "Đọc file prompts/claude_director.md và làm đúng theo hướng dẫn trong đó. Yêu cầu video nằm trong output/request.json."
           claude_args: |
             --max-turns 120

@@ -1,0 +1,412 @@
+{
+ "title": "Vì sao mèo mê hộp giấy đến vậy?",
+ "description": "Mèo bỏ qua cái giường xịn để chui vào hộp giấy. Khoa học giải thích vì sao.",
+ "tags": [
+  "mèo",
+  "khoa học",
+  "thú cưng",
+  "hộp giấy",
+  "sự thật thú vị"
+ ],
+ "art_style": "cute chibi 2D cartoon, bold clean dark outlines, soft cel shading, warm vibrant colors",
+ "cast": [
+  {
+   "id": "cat",
+   "prompt": "a cute chubby orange tabby cat, sitting",
+   "expressions": {
+    "happy": "same cat, eyes closed, very happy smile",
+    "shock": "same cat, shocked, wide eyes, fur standing up"
+   }
+  },
+  {
+   "id": "owner",
+   "prompt": "a young woman with a ponytail wearing a yellow sweater, standing",
+   "expressions": {
+    "confused": "same woman, confused, scratching her head"
+   }
+  }
+ ],
+ "props": [
+  {
+   "id": "box",
+   "prompt": "an open empty cardboard box"
+  },
+  {
+   "id": "bed",
+   "prompt": "a fancy round pink pet bed with a price tag"
+  },
+  {
+   "id": "heart",
+   "prompt": "a glossy red heart icon"
+  },
+  {
+   "id": "thermo",
+   "prompt": "a red thermometer"
+  },
+  {
+   "id": "shield",
+   "prompt": "a blue shield icon"
+  }
+ ],
+ "stages": [
+  {
+   "id": "room",
+   "prompt": "a cozy living room with wooden floor, sofa and a window with sunlight"
+  },
+  {
+   "id": "lab",
+   "prompt": "a bright science laboratory with shelves and charts on the wall",
+   "dof": true
+  }
+ ],
+ "scenes": [
+  {
+   "narration": "Bạn mua cho mèo một cái giường giá năm trăm nghìn.",
+   "stage": "room",
+   "speaker": "owner",
+   "events": [
+    {
+     "at": 0,
+     "do": "camera",
+     "x": 0.4,
+     "y": 0.6,
+     "zoom": 1.5
+    },
+    {
+     "at": 0,
+     "do": "enter",
+     "id": "owner",
+     "x": 0.3,
+     "y": 0.86,
+     "size": 0.341,
+     "anim": "slide_left"
+    },
+    {
+     "at": 3,
+     "do": "enter",
+     "id": "bed",
+     "x": 0.52,
+     "y": 0.86,
+     "size": 0.124,
+     "anim": "drop"
+    },
+    {
+     "at": 7,
+     "do": "label",
+     "text": "500.000đ",
+     "x": 0.52,
+     "y": 0.62,
+     "style": "tag",
+     "bg": "#FFD400"
+    },
+    {
+     "at": 8,
+     "do": "camera",
+     "x": 0.45,
+     "y": 0.62,
+     "zoom": 1.3
+    }
+   ]
+  },
+  {
+   "narration": "Nhưng nó lại chui vào cái hộp giấy đựng chính cái giường đó.",
+   "stage": "room",
+   "speaker": "owner",
+   "events": [
+    {
+     "at": 0,
+     "do": "enter",
+     "id": "box",
+     "x": 0.7,
+     "y": 0.87,
+     "size": 0.112,
+     "anim": "pop"
+    },
+    {
+     "at": 2,
+     "do": "enter",
+     "id": "cat",
+     "x": 0.95,
+     "y": 0.86,
+     "size": 0.155,
+     "anim": "slide_right"
+    },
+    {
+     "at": 3,
+     "do": "move",
+     "id": "cat",
+     "to": [
+      0.7,
+      0.8
+     ],
+     "path": "arc",
+     "height": 0.15
+    },
+    {
+     "at": 3,
+     "do": "camera",
+     "x": 0.62,
+     "y": 0.62,
+     "zoom": 1.5
+    },
+    {
+     "at": 6,
+     "do": "expr",
+     "id": "owner",
+     "expr": "confused"
+    },
+    {
+     "at": 6,
+     "do": "action",
+     "id": "owner",
+     "anim": "shake"
+    },
+    {
+     "at": 8,
+     "do": "arrow",
+     "from": [
+      0.88,
+      0.5
+     ],
+     "to": [
+      0.74,
+      0.66
+     ]
+    }
+   ]
+  },
+  {
+   "narration": "Lý do đầu tiên: chiếc hộp giúp mèo giảm căng thẳng.",
+   "stage": "lab",
+   "speaker": "cat",
+   "transition": "whip",
+   "events": [
+    {
+     "at": 0,
+     "do": "camera",
+     "x": 0.5,
+     "y": 0.6,
+     "zoom": 1.2
+    },
+    {
+     "at": 0,
+     "do": "enter",
+     "id": "cat",
+     "x": 0.4,
+     "y": 0.86,
+     "size": 0.248,
+     "anim": "pop",
+     "expr": "happy"
+    },
+    {
+     "at": 2,
+     "do": "label",
+     "text": "LÝ DO 1",
+     "x": 0.5,
+     "y": 0.3,
+     "style": "title"
+    },
+    {
+     "at": 4,
+     "do": "enter",
+     "id": "heart",
+     "x": 0.62,
+     "y": 0.6,
+     "size": 0.087,
+     "anim": "pop"
+    },
+    {
+     "at": 6,
+     "do": "action",
+     "id": "heart",
+     "anim": "pulse"
+    },
+    {
+     "at": 7,
+     "do": "burst",
+     "x": 0.62,
+     "y": 0.55,
+     "kind": "sparkle"
+    }
+   ]
+  },
+  {
+   "narration": "Một nghiên cứu ở Hà Lan cho thấy mèo có hộp bình tĩnh lại nhanh gấp ba lần.",
+   "stage": "lab",
+   "speaker": "cat",
+   "events": [
+    {
+     "at": 0,
+     "do": "camera",
+     "x": 0.6,
+     "y": 0.55,
+     "zoom": 1.4
+    },
+    {
+     "at": 5,
+     "do": "label",
+     "text": "Hà Lan",
+     "x": 0.68,
+     "y": 0.35,
+     "style": "map"
+    },
+    {
+     "at": 8,
+     "do": "line",
+     "points": [
+      [
+       0.55,
+       0.75
+      ],
+      [
+       0.62,
+       0.62
+      ],
+      [
+       0.7,
+       0.55
+      ],
+      [
+       0.8,
+       0.4
+      ]
+     ],
+     "color": "#33CC66",
+     "glow": true
+    },
+    {
+     "at": 12,
+     "do": "label",
+     "text": "x3",
+     "x": 0.82,
+     "y": 0.36,
+     "style": "tag",
+     "bg": "#33CC66",
+     "color": "#FFFFFF",
+     "size": 1.4
+    },
+    {
+     "at": 12,
+     "do": "action",
+     "id": "cat",
+     "anim": "jump"
+    }
+   ]
+  },
+  {
+   "narration": "Lý do thứ hai: bên trong hộp ấm hơn, và mèo rất thích ấm.",
+   "stage": "lab",
+   "speaker": "cat",
+   "events": [
+    {
+     "at": 0,
+     "do": "camera",
+     "x": 0.35,
+     "y": 0.6,
+     "zoom": 1.6
+    },
+    {
+     "at": 0,
+     "do": "label",
+     "text": "LÝ DO 2",
+     "x": 0.45,
+     "y": 0.3,
+     "style": "title"
+    },
+    {
+     "at": 5,
+     "do": "enter",
+     "id": "thermo",
+     "x": 0.58,
+     "y": 0.78,
+     "size": 0.124,
+     "anim": "rise"
+    },
+    {
+     "at": 7,
+     "do": "highlight",
+     "x": 0.58,
+     "y": 0.68,
+     "r": 0.1
+    },
+    {
+     "at": 10,
+     "do": "expr",
+     "id": "cat",
+     "expr": "happy"
+    },
+    {
+     "at": 10,
+     "do": "action",
+     "id": "cat",
+     "anim": "wiggle"
+    }
+   ]
+  },
+  {
+   "narration": "Lần sau, đừng mua giường đắt tiền. Giữ lại cái hộp! Đăng ký kênh để xem thêm nhé!",
+   "stage": "room",
+   "speaker": "owner",
+   "transition": "zoom",
+   "events": [
+    {
+     "at": 0,
+     "do": "camera",
+     "x": 0.55,
+     "y": 0.62,
+     "zoom": 1.1
+    },
+    {
+     "at": 0,
+     "do": "enter",
+     "id": "owner",
+     "x": 0.35,
+     "y": 0.86,
+     "size": 0.341,
+     "anim": "pop"
+    },
+    {
+     "at": 0,
+     "do": "enter",
+     "id": "box",
+     "x": 0.62,
+     "y": 0.87,
+     "size": 0.112,
+     "anim": "pop"
+    },
+    {
+     "at": 1,
+     "do": "enter",
+     "id": "cat",
+     "x": 0.62,
+     "y": 0.8,
+     "size": 0.136,
+     "anim": "rise",
+     "expr": "happy"
+    },
+    {
+     "at": 4,
+     "do": "label",
+     "text": "GIỮ LẠI HỘP!",
+     "x": 0.55,
+     "y": 0.35,
+     "style": "tag",
+     "bg": "#FFD400"
+    },
+    {
+     "at": 9,
+     "do": "action",
+     "id": "owner",
+     "anim": "jump"
+    },
+    {
+     "at": 10,
+     "do": "burst",
+     "x": 0.5,
+     "y": 0.45,
+     "kind": "confetti"
+    }
+   ]
+  }
+ ]
+}

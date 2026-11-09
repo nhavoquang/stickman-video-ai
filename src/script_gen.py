@@ -94,7 +94,7 @@ def generate_script(topic: str, scenes: int, model: str, language: str = "tiến
     for m in models:
         for attempt in range(2):
             try:
-                r = requests.post(API_URL.format(model=m), params={"key": key}, json=body, timeout=120)
+                r = requests.post(API_URL.format(model=m), params={"key": key}, json=body, timeout=75)
                 if r.status_code == 404:
                     errors.append(f"{m}: không tồn tại")
                     break
@@ -111,6 +111,10 @@ def generate_script(topic: str, scenes: int, model: str, language: str = "tiến
                 data = _clean(json.loads(text))
                 print(f"[script] {m}: {len(data['scenes'])} cảnh — {data['title']}")
                 return data
+            except requests.Timeout as e:  # model quá tải: chuyển ngay sang model khác
+                errors.append(f"{m}: {e}")
+                print(f"[script] {errors[-1]}")
+                break
             except (requests.RequestException, KeyError, IndexError, ValueError) as e:
                 errors.append(f"{m}: {e}")
                 print(f"[script] {errors[-1]}")
