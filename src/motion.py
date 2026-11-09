@@ -391,6 +391,14 @@ class Renderer:
         sy = st["sy"] * breathe * (1 + 0.05 * talk)
         x = st["x"] * sw + st["dx"] * self.W
         y = st["y"] * sh + st["dy"] * self.H
+        # quá nhỏ hoặc trong suốt (đầu hiệu ứng pop/cuối exit): bỏ qua, tránh ma trận suy biến làm cairo lỗi
+        if st["alpha"] <= 0.01 or abs(s * sx) * iw < 1 or abs(s * sy) * ih < 1:
+            return
+        if not all(map(math.isfinite, (x, y, sx, sy, s, st["rot"]))):
+            return
+        self._paint_obj(ctx, surf, iw, ih, s, sx, sy, x, y, st, t, seed)
+
+    def _paint_obj(self, ctx, surf, iw, ih, s, sx, sy, x, y, st, t, seed):
         sway = 1.2 * math.sin(t * 1.7 + seed)
         ctx.save()
         # bóng đổ dưới chân
@@ -404,11 +412,14 @@ class Renderer:
         ctx.translate(x, y)
         ctx.rotate(math.radians(st["rot"] + sway))
         ctx.scale(s * sx * (-1 if st["flip"] else 1), s * sy)
+        ax, ay = abs(s * sx), abs(s * sy)
+        scale_ok = min(ax, ay) / max(ax, ay) > 0.15  # co méo quá mức (spin/squash)
         n = 3 if st["blur"] > 0.2 else 1  # mờ chuyển động khi lướt nhanh
         for k in range(n):
             off = (k - (n - 1) / 2) * st["blur"] * 40 / max(s, 0.01) * (1 if not st["flip"] else -1)
             ctx.set_source_surface(surf, -iw / 2 + off, -ih)
-            ctx.get_source().set_filter(cairo.FILTER_GOOD)
+            # FILTER_GOOD với tỉ lệ co méo cực đoan làm cairo "out of memory" (lỗi run 42577402563)
+            ctx.get_source().set_filter(cairo.FILTER_GOOD if scale_ok else cairo.FILTER_BILINEAR)
             ctx.paint_with_alpha(st["alpha"] / n * (1.6 if n > 1 else 1))
         ctx.restore()
 
