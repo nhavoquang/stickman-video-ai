@@ -59,16 +59,37 @@ class Images:
     def get(self, path, blur=0):
         key = (str(path), blur)
         if key not in self.cache:
-            p = Path(path)
-            if blur or p.suffix.lower() != ".png":
-                im = Image.open(p).convert("RGBA")
-                if blur:
-                    im = im.filter(ImageFilter.GaussianBlur(blur))
-                tmp = p.with_name(p.stem + f"_b{blur}.png")
-                im.save(tmp)
-                p = tmp
-            self.cache[key] = cairo.ImageSurface.create_from_png(str(p))
+            self.cache[key] = to_surface(path, blur)
         return self.cache[key]
+
+
+def to_surface(path, blur=0):
+    """Đọc ảnh bằng PIL rồi chuyển thẳng sang cairo trong bộ nhớ (không ghi file tạm:
+    tránh lỗi libpng khi một tiến trình khác đang ghi cùng file)."""
+    for attempt in range(3):
+        try:
+            im = Image.open(path)
+            im.load()
+            break
+        except OSError:
+            if attempt == 2:
+                raise
+            import time
+            time.sleep(2)
+    im = im.convert("RGBA")
+    if blur:
+        im = im.filter(ImageFilter.GaussianBlur(blur))
+    # cairo ARGB32 = BGRA, alpha nhân sẵn (premultiplied)
+    r, g, b, a = im.split()
+    from PIL import ImageChops
+    r, g, b = (ImageChops.multiply(c, a) for c in (r, g, b))
+    data = bytearray(Image.merge("RGBA", (b, g, r, a)).tobytes())
+    w, h = im.size
+    stride = cairo.ImageSurface.format_stride_for_width(cairo.FORMAT_ARGB32, w)
+    if stride != w * 4:
+        rows = [bytes(data[y * w * 4:(y + 1) * w * 4]).ljust(stride, b"\0") for y in range(h)]
+        data = bytearray(b"".join(rows))
+    return cairo.ImageSurface.create_for_data(data, cairo.FORMAT_ARGB32, w, h, stride)
 
 
 # ------------------------------------------------------------------ timeline ---

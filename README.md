@@ -25,8 +25,8 @@ Cài một lần:
 
 Mỗi video dùng một phần hạn mức gói Claude của bạn. File `review_notes.md` trong Artifacts ghi lại điểm và những gì Claude đã sửa.
 
-## Tự chạy khi commit
-Mỗi lần commit lên `main`, workflow tự tạo 1 video mẫu tiếng Việt (16:9, 60 giây) với chủ đề chọn ngẫu nhiên trong `topics.txt`. Muốn chọn ngôn ngữ, khung hình, độ dài... thì chạy tay như bên dưới.
+## Chạy
+Workflow chỉ chạy khi bạn bấm **Run workflow** (commit không tự chạy). Bỏ trống chủ đề thì tool chọn ngẫu nhiên trong `topics.txt`.
 
 ## Tạo video
 1. Tab **Actions** → **Tạo video người que** → **Run workflow**.

@@ -8,6 +8,12 @@ rate, subtitles, notes). Bạn KHÔNG commit, KHÔNG push, KHÔNG sửa code tro
 Đọc kỹ `prompts/motion_spec.md` (định dạng kịch bản + quy tắc đạo diễn) và xem ví dụ
 `examples/sample_motion.json`. Các lệnh tạo ảnh/giọng có thể chạy nhiều phút: hãy chờ, đừng huỷ.
 
+**Giới hạn thời gian: toàn bộ phần việc của bạn phải xong trong 40 phút** (quá 70 phút bước này bị dừng
+và báo lỗi). Việc đầu tiên: chạy `date +%s > output/.start`. Trước mỗi vòng sửa, xem đã bao lâu bằng
+`echo $(( ($(date +%s) - $(cat output/.start)) / 60 )) phút`. Từ phút 30 trở đi: không bắt đầu vòng mới,
+chỉ đảm bảo `output/script.json` hợp lệ rồi kết thúc. Tạo ảnh AI miễn phí hay bị giới hạn tốc độ (HTTP 402)
+nên mỗi lần chạy `--stage assets` có thể mất 5–15 phút: chỉ đổi những ảnh thật sự hỏng.
+
 Nếu `style` trong request KHÁC "motion" (doodle/shirt) thì làm theo phần "Chế độ người que cũ" ở cuối.
 
 ## Bước 1. Kế hoạch
@@ -35,7 +41,7 @@ python src/main.py --script-file output/script.json --stage assets --language <l
 Rồi dùng công cụ Read để XEM: `output/review/assets_*.jpg` (mọi nhân vật/đạo cụ/sân khấu) và
 `output/review/scenes_*.jpg` (2 khung mỗi cảnh, đánh số), đọc `output/review/report.json`.
 
-## Bước 5. Sửa lỗi hình (tối đa 3 vòng)
+## Bước 5. Sửa lỗi hình (tối đa 2 vòng)
 - Nhân vật/đạo cụ: sai phong cách, còn nền/khung, có chữ, bị cắt cụt, nhiều vật thể, biểu cảm không khác
   bản gốc → viết lại prompt (đơn giản, một chủ thể, mô tả rõ hơn).
 - Sân khấu: có người, có chữ, quá rối, quá tối, không hợp nội dung → viết lại prompt.

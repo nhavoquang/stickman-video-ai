@@ -25,6 +25,7 @@ Find its face. Return ONLY JSON:
 If there is no visible face (object, back view), return {{"face": false}}."""
 
 _models = None
+_fails = 0
 
 
 def _gemini(path: Path) -> dict | None:
@@ -51,17 +52,25 @@ def _gemini(path: Path) -> dict | None:
         {"inline_data": {"mime_type": "image/jpeg", "data": data}},
         {"text": PROMPT.format(w=im.width, h=im.height)}]}],
         "generationConfig": {"responseMimeType": "application/json", "temperature": 0.1}}
-    for m in _models:
+    global _fails
+    if _fails >= 3:  # Gemini đang quá tải/hết hạn mức: dùng cách dò điểm ảnh cho nhanh
+        return None
+    for m in _models[:2]:
         try:
-            r = requests.post(API.format(model=m), params={"key": key}, json=body, timeout=60)
+            r = requests.post(API.format(model=m), params={"key": key}, json=body, timeout=25)
             if not r.ok:
                 print(f"[face] {m}: HTTP {r.status_code}")
+                _fails += 1
+                if r.status_code == 429:
+                    _fails = max(_fails, 3)
+                    return None
                 continue
             text = r.json()["candidates"][0]["content"]["parts"][0]["text"]
             text = re.sub(r"//.*", "", text)
             return json.loads(text)
         except (requests.RequestException, KeyError, IndexError, ValueError) as e:
             print(f"[face] {m}: {e}")
+            _fails += 1
     return None
 
 

@@ -1,11 +1,7 @@
 name: Tạo video người que
-run-name: "${{ inputs.topic || 'Video mẫu (commit)' }} | ${{ inputs.language || 'vi' }} ${{ inputs.aspect || '16:9' }}"
+run-name: "${{ inputs.topic || 'Video' }} | ${{ inputs.language || 'vi' }} ${{ inputs.aspect || '16:9' }}"
 
 on:
-  # Mỗi lần commit lên main: tự chạy 1 video mẫu tiếng Việt (chủ đề lấy từ topics.txt)
-  push:
-    branches: [main]
-    paths-ignore: ["README.md", "music/**", "dashboard/**", "docs/**"]
   # Chạy tay trên web: chọn đầy đủ tuỳ chọn
   workflow_dispatch:
     inputs:
@@ -56,26 +52,7 @@ on:
         default: ""
 
 jobs:
-  # Claude Code Action không chạy trực tiếp với sự kiện push, nên khi commit
-  # job này tự bấm "Run workflow" với tuỳ chọn mặc định (tiếng Việt, 16:9, 60 giây).
-  sample-on-push:
-    if: github.event_name == 'push'
-    runs-on: ubuntu-latest
-    permissions:
-      actions: write
-      contents: read
-    steps:
-      - uses: actions/checkout@v4
-      - name: Chạy 1 video mẫu tiếng Việt
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          TOPIC=$(grep -v '^#' topics.txt | sed '/^\s*$/d' | shuf -n 1)
-          echo "Chủ đề: $TOPIC"
-          gh workflow run make-video.yml --ref "${{ github.ref_name }}" -f topic="$TOPIC" -f language=vi
-
   video:
-    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 150
     permissions:
@@ -126,7 +103,7 @@ jobs:
         if: (inputs.engine || 'claude') == 'claude'
         id: claude
         continue-on-error: true
-        timeout-minutes: 60
+        timeout-minutes: 70
         uses: anthropics/claude-code-action@v1
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}  # dò vị trí mặt/miệng nhân vật
@@ -138,13 +115,15 @@ jobs:
           allowed_bots: "github-actions,github-actions[bot]"
           prompt: "Đọc file prompts/claude_director.md và làm đúng theo hướng dẫn trong đó. Yêu cầu video nằm trong output/request.json."
           claude_args: |
-            --max-turns 120
+            --max-turns 80
             --allowedTools "Bash,Read,Write,Edit,Glob,Grep"
 
       - name: Dựng video
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
+          # tiến trình còn sót lại của bước Claude (nếu bị dừng vì hết giờ) có thể ghi đè file đang đọc
+          pkill -f "src/main.py" || true
           COMMON=(--language "$LANGUAGE" --aspect "$ASPECT" --duration "$DURATION" --voice "$VOICE"
                   --style "$STYLE" --rate="$RATE" --subtitles "$SUBTITLES")
           if [ -f output/script.json ] && python -c "import json;json.load(open('output/script.json'))"; then
