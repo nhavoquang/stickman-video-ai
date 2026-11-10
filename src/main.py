@@ -63,12 +63,21 @@ def run_motion(a, n_scenes, size, vertical, font, font_path):
     if a.print_plan:
         print(json.dumps(plan, ensure_ascii=False, indent=2))
         return
+    ref = None
+    if a.style_ref.strip():
+        import style_ref
+        ref = style_ref.analyze(a.style_ref, Path(a.out), a.offline)
     if a.script_file:
         film = motion_script.clean(json.loads(Path(a.script_file).read_text(encoding="utf-8")))
     elif a.topic:
-        film = motion_script.generate(a.topic, plan, a.model, a.notes)
+        notes = a.notes
+        if ref and ref.get("art_style"):
+            notes = (notes + "\n" if notes else "") + style_ref.notes_for_script(ref)
+        film = motion_script.generate(a.topic, plan, a.model, notes)
     else:
         raise SystemExit("Cần --topic hoặc --script-file")
+    if ref:
+        style_ref.apply(film, ref)
 
     out = Path(a.out)
     work = out / "work"
@@ -117,6 +126,24 @@ def run_motion(a, n_scenes, size, vertical, font, font_path):
     sheets = contact_sheets(frames, review / "scenes", per_sheet=12)
     imgs = [v for k, v in assets.items()]
     asset_sheets = contact_sheets([Path(x) for x in imgs], review / "assets", per_sheet=16, thumb_w=360)
+    # ảnh lưới toạ độ cho từng ảnh nhân vật: Claude xem để ghi vị trí mắt/miệng (cast[i].faces)
+    import face as FACE
+    fdir = review / "faces"
+    if fdir.exists():
+        shutil.rmtree(fdir)
+    for c in film.get("cast", []):
+        for ex in [None] + list((c.get("expressions") or {}).keys()):
+            key = c["id"] if ex is None else f'{c["id"]}:{ex}'
+            if key not in assets:
+                continue
+            fkey = ex or "base"
+            ov = (c.get("faces") or {}).get(fkey)
+            try:
+                info = FACE.locate(assets[key], ov, use_ai=not a.offline)
+                FACE.grid_sheet(Path(assets[key]), fdir / f'{c["id"]}__{fkey}.jpg', info,
+                                f'{c["id"]} faces.{fkey}  nguồn: {info.get("source")}')
+            except Exception as e:
+                print(f"[face] {key}: {e}")
     (work / "timings.json").write_text(json.dumps(timings))
     total = sum(d for d, _ in timings)
     report = {"total_seconds": round(total, 1), "target_seconds": a.duration,
@@ -168,6 +195,8 @@ def main():
     p.add_argument("--style", default="motion",
                    help="motion (dựng chuyển động, mặc định) | doodle / shirt (người que cũ)")
     p.add_argument("--subtitles", default="on", choices=["on", "off"])
+    p.add_argument("--style-ref", default="",
+                   help="Ảnh mẫu phong cách: tên thư mục trong style_refs/, đường dẫn hoặc link ảnh")
     p.add_argument("--notes", default="", help="Yêu cầu thêm cho kịch bản, ví dụ: hài hước, cho trẻ em")
     p.add_argument("--model", default="auto", help="auto = tự chọn model Gemini mới nhất")
     p.add_argument("--script-file", help="Dùng kịch bản JSON có sẵn thay vì gọi Gemini")

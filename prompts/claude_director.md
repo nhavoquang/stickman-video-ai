@@ -16,6 +16,16 @@ nên mỗi lần chạy `--stage assets` có thể mất 5–15 phút: chỉ đ�
 
 Nếu `style` trong request KHÁC "motion" (doodle/shirt) thì làm theo phần "Chế độ người que cũ" ở cuối.
 
+## Bước 0. Ảnh mẫu phong cách (chỉ khi `style_ref` trong request khác rỗng)
+```
+python src/style_ref.py "<style_ref>" output
+```
+Lệnh in ra danh sách ảnh mẫu và mô tả phong cách của Gemini. Dùng Read để TỰ XEM từng ảnh mẫu, rồi viết
+`art_style` thật chi tiết (nét vẽ, màu, tô bóng, tỉ lệ đầu/thân, kiểu mắt, nền, chất liệu; ≤ 70 từ tiếng Anh,
+không nêu tên tác giả/thương hiệu). Nếu ảnh mẫu có nhân vật: nhân vật chính trong `cast` phải mô tả giống
+nhân vật đó. Đặt `"style_ref_applied": true` trong script.json. Ở Bước 5, so ảnh tạo ra với ảnh mẫu: lệch phong
+cách thì sửa `art_style`/prompt.
+
 ## Bước 1. Kế hoạch
 ```
 python src/main.py --print-plan --language <language> --aspect <aspect> --duration <duration>
@@ -36,10 +46,28 @@ camera, biểu cảm), độ rõ ràng (hình minh hoạ đúng ý nói), ngôn 
 
 ## Bước 4. Tạo tài nguyên + xem trước
 ```
-python src/main.py --script-file output/script.json --stage assets --language <language> --aspect <aspect> --duration <duration> --voice <voice> --rate=<rate>
+python src/main.py --script-file output/script.json --stage assets --language <language> --aspect <aspect> --duration <duration> --voice <voice> --rate=<rate> --style-ref="<style_ref>"
 ```
 Rồi dùng công cụ Read để XEM: `output/review/assets_*.jpg` (mọi nhân vật/đạo cụ/sân khấu) và
 `output/review/scenes_*.jpg` (2 khung mỗi cảnh, đánh số), đọc `output/review/report.json`.
+
+## Bước 4b. Xác định mắt + miệng cho từng nhân vật (Claude làm, Gemini chỉ dự phòng)
+Engine vẽ miệng nhép và chớp mắt lên ảnh nhân vật, nên cần vị trí CHÍNH XÁC. Dùng Read xem từng ảnh
+`output/review/faces/<cast_id>__<base|biểu cảm>.jpg`: ảnh nhân vật trên lưới toạ độ 0..1 (số ở mép trên = x,
+mép trái = y), khung đỏ = miệng máy tự đoán, vòng xanh = mắt. Với MỖI ảnh, ghi vào `script.json`:
+```
+"cast": [{"id": "kid", ..., "faces": {
+   "base":  {"mouth_box": [x0, y0, x1, y1], "eyes": [[x, y, r], [x, y, r]], "mouth_open": false},
+   "happy": {"mouth_box": [...], "eyes": [...], "mouth_open": true},
+   "sad":   {"face": false}}}]
+```
+- `mouth_box`: khung bao sát cái miệng đang vẽ trong ảnh (toạ độ ảnh 0..1). Không có miệng thì khung nhỏ ở
+  chỗ miệng nên nằm (khoảng 1/3 từ cằm lên, giữa hai mắt). `eyes`: tâm mỗi mắt + bán kính r (theo chiều ngang).
+- `mouth_open: true` khi miệng gốc há to có răng/lưỡi (engine giữ nguyên, không vẽ đè).
+- `{"face": false}` khi mặt nghiêng/quay lưng/quá nhỏ/không phải sinh vật có mặt → không nhép.
+Chạy lại lệnh Bước 4 (không tạo lại ảnh, chỉ dựng lại xem trước) rồi xem lại `review/faces/*.jpg`: nguồn phải là
+"claude", khung đỏ phải ôm đúng miệng, vòng xanh đúng mắt; trong `scenes_*.jpg` không có hai miệng.
+Lệch thì chỉnh số và chạy lại (tối đa 2 lần).
 
 ## Bước 5. Sửa lỗi hình (tối đa 2 vòng)
 - Nhân vật/đạo cụ: sai phong cách, còn nền/khung, có chữ, bị cắt cụt, nhiều vật thể, biểu cảm không khác
@@ -48,7 +76,7 @@ Rồi dùng công cụ Read để XEM: `output/review/assets_*.jpg` (mọi nhân
 - Bố cục: nhân vật/nhãn/mũi tên nằm ngoài khung hình, chồng lên nhau, quá to/quá nhỏ, che phụ đề
   → sửa x, y, size, camera.
 - Khẩu hình: engine tự vẽ miệng nhép theo giọng và chớp mắt. Trong `scenes_*.jpg` kiểm tra miệng nằm đúng
-  chỗ trên mặt, không bị hai miệng. Sai thì thêm `faces` cho nhân vật đó (xem motion_spec mục 10), hoặc
+  chỗ trên mặt, không bị hai miệng. Sai thì sửa `faces` của nhân vật đó (Bước 4b), hoặc
   viết lại prompt cho mặt nhìn thẳng, miệng nhỏ khép.
 - `events_per_second` < 0.7 → thêm sự kiện. Tổng thời lượng lệch > 20% so với yêu cầu → sửa lời dẫn.
 Sửa `script.json` rồi chạy lại lệnh Bước 4 (chỉ phần đổi mới được tạo lại). Ghi những gì đã sửa vào

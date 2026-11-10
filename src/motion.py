@@ -555,15 +555,22 @@ def draw_face(ctx, fc, iw, ih, t, seed, talk, word, expr):
                 ctx.move_to(ex - er, lid - er * 0.1)
                 ctx.curve_to(ex - er * 0.4, lid + er * 0.35, ex + er * 0.4, lid + er * 0.35, ex + er, lid - er * 0.1)
                 ctx.stroke()
-    # --- xoá miệng gốc (nếu có) bằng màu da
+    if fc.get("mouth_open"):
+        return  # ảnh gốc vẽ miệng há to (có răng/lưỡi): giữ nguyên, che đi sẽ lộ vết
+    # --- xoá miệng gốc (nếu có) bằng màu da, mép mềm
     if fc.get("has_mouth", True):
+        rx = mw * 0.6
+        ry = max(float(fc.get("mouth_h", 0)) * ih * 0.75, mw * 0.28)
         ctx.save()
         ctx.translate(mx, my)
-        ctx.scale(1, 0.62)
-        ctx.arc(0, 0, mw * 0.62, 0, 2 * math.pi)
-        ctx.restore()
-        ctx.set_source_rgb(*skin)
+        _sc(ctx, 1, ry / rx)
+        g = cairo.RadialGradient(0, 0, rx * 1.0, 0, 0, rx * 1.25)
+        g.add_color_stop_rgba(0, *skin, 1)
+        g.add_color_stop_rgba(1, *skin, 0)
+        ctx.set_source(g)
+        ctx.arc(0, 0, rx * 1.25, 0, 2 * math.pi)
         ctx.fill()
+        ctx.restore()
     # --- hình miệng
     op = clamp(talk * 1.25)
     if op < 0.12 and mood in ("o",):

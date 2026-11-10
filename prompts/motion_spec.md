@@ -116,9 +116,10 @@ E. Ending: a punchy payoff, then ≤ 6 words of call to action. For Shorts, writ
     member. So cast and expression prompts must show the character FRONT-facing with a clear face and a
     SMALL CLOSED mouth; express emotion with eyes, eyebrows, pose and hands (not with an open mouth).
     The expression key names the mood of the drawn mouth: shock/surprised → "O" mouth, sad/angry/worried
-    → frown, happy/laugh/excited → big smile, thinking/confused → flat. Optional per-image fix if the
-    mouth is misplaced: `"faces": {"base": {"mouth": [x, y], "mouth_width": w, "eyes": [[x,y,r],[x,y,r]],
-    "skin": "#hex", "has_mouth": true}, "<expr>": {...}}` inside a cast entry (0–1 of the image).
+    → frown, happy/laugh/excited → big smile, thinking/confused → flat. Face positions per image (filled
+    after the images exist, by looking at review/faces/*.jpg): `"faces": {"base": {"mouth_box": [x0,y0,x1,y1],
+    "eyes": [[x,y,r],[x,y,r]], "mouth_open": false}, "<expr>": {...}}` inside a cast entry (0–1 of the image;
+    optional "skin": "#hex"). Use `{"face": false}` for an image whose face is not front-facing or too small.
 11. Prompts: cast/props prompts describe ONE subject only, no background; stage prompts describe a place
     with NO people and NO text. All in English. Everything shares `art_style`.
 12. Ending: payoff + call to like/subscribe with a final `burst` or character `wave`-like action (bounce/jump).

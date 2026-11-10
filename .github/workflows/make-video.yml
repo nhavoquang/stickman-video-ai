@@ -50,6 +50,10 @@ on:
         description: "Yêu cầu thêm cho kịch bản (vd: hài hước, cho trẻ em, có số liệu) - có thể bỏ trống"
         required: false
         default: ""
+      style_ref:
+        description: "Ảnh mẫu phong cách (tuỳ chọn): tên thư mục trong style_refs/ hoặc link ảnh, cách nhau bởi dấu cách"
+        required: false
+        default: ""
 
 jobs:
   video:
@@ -68,6 +72,7 @@ jobs:
       RATE: ${{ inputs.rate || '+5%' }}
       SUBTITLES: ${{ inputs.subtitles || 'on' }}
       NOTES: ${{ inputs.notes || '' }}
+      STYLE_REF: ${{ inputs.style_ref || '' }}
       POLLINATIONS_TOKEN: ${{ secrets.POLLINATIONS_TOKEN }}
     steps:
       - uses: actions/checkout@v4
@@ -88,7 +93,7 @@ jobs:
           mkdir -p output
           python - <<'PY'
           import json, os, random
-          keys = ["topic", "language", "aspect", "duration", "voice", "style", "rate", "subtitles", "notes"]
+          keys = ["topic", "language", "aspect", "duration", "voice", "style", "rate", "subtitles", "notes", "style_ref"]
           req = {k: os.environ["INPUT_TOPIC" if k == "topic" else k.upper()] for k in keys}
           if not req["topic"].strip():  # chạy do commit: lấy ngẫu nhiên 1 chủ đề trong topics.txt
               topics = [t.strip() for t in open("topics.txt", encoding="utf-8") if t.strip() and not t.startswith("#")]
@@ -125,7 +130,7 @@ jobs:
           # tiến trình còn sót lại của bước Claude (nếu bị dừng vì hết giờ) có thể ghi đè file đang đọc
           pkill -f "src/main.py" || true
           COMMON=(--language "$LANGUAGE" --aspect "$ASPECT" --duration "$DURATION" --voice "$VOICE"
-                  --style "$STYLE" --rate="$RATE" --subtitles "$SUBTITLES")
+                  --style "$STYLE" --rate="$RATE" --subtitles "$SUBTITLES" --style-ref="$STYLE_REF")
           if [ -f output/script.json ] && python -c "import json;json.load(open('output/script.json'))"; then
             echo "Dùng kịch bản Claude đã tối ưu"
             python src/main.py --script-file output/script.json "${COMMON[@]}" \

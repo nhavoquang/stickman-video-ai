@@ -14,15 +14,18 @@ import requests
 from PIL import Image
 
 API = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-PROMPT = """This is a cartoon character on a transparent background (image {w}x{h} px).
-Find its face. Return ONLY JSON:
-{{"face": true/false,
-  "eyes": [[x, y, r], [x, y, r]],      // eye centres and radius, normalised 0-1 (x by width, y by height, r by width)
-  "mouth": [x, y],                     // centre of the mouth, or where the mouth should be if it has none
-  "mouth_width": w,                    // natural mouth width, fraction of image width
-  "has_mouth": true/false,             // is a mouth drawn?
-  "skin": "#rrggbb"}}                  // face colour just around the mouth
-If there is no visible face (object, back view), return {{"face": false}}."""
+PROMPT = """This is a cartoon character on a white background.
+Locate its face parts as bounding boxes in the format [ymin, xmin, ymax, xmax] normalised to 0-1000.
+Return ONLY JSON:
+{"face": true or false,
+ "face_box": [ymin, xmin, ymax, xmax],
+ "left_eye_box": [...], "right_eye_box": [...],
+ "mouth_box": [...],
+ "mouth_open": true or false,
+ "skin": "#rrggbb"}
+"mouth_box" = the drawn mouth (or, if no mouth is drawn, where it should be). "mouth_open" = teeth/tongue or a wide
+open mouth is visible. "skin" = face colour right next to the mouth.
+If no face is visible (an object, a back view), return {"face": false}."""
 
 _models = None
 _fails = 0
@@ -53,25 +56,80 @@ def _gemini(path: Path) -> dict | None:
         {"text": PROMPT.format(w=im.width, h=im.height)}]}],
         "generationConfig": {"responseMimeType": "application/json", "temperature": 0.1}}
     global _fails
-    if _fails >= 3:  # Gemini đang quá tải/hết hạn mức: dùng cách dò điểm ảnh cho nhanh
+    if _fails >= 8:  # Gemini hỏng liên tục: thôi, không nhép miệng (còn hơn vẽ sai chỗ)
         return None
+    import time
     for m in _models[:2]:
-        try:
-            r = requests.post(API.format(model=m), params={"key": key}, json=body, timeout=25)
-            if not r.ok:
-                print(f"[face] {m}: HTTP {r.status_code}")
+        for attempt in range(4):
+            try:
+                r = requests.post(API.format(model=m), params={"key": key}, json=body, timeout=40)
+                if r.status_code in (429, 500, 503):  # quá tải / hạn mức theo phút: chờ rồi thử lại
+                    print(f"[face] {m}: HTTP {r.status_code}, chờ {12 * (attempt + 1)}s")
+                    _fails += 1
+                    time.sleep(12 * (attempt + 1))
+                    continue
+                if not r.ok:
+                    print(f"[face] {m}: HTTP {r.status_code}")
+                    _fails += 1
+                    break
+                text = r.json()["candidates"][0]["content"]["parts"][0]["text"]
+                text = re.sub(r"//.*", "", text)
+                _fails = 0
+                return json.loads(text)
+            except (requests.RequestException, KeyError, IndexError, ValueError) as e:
+                print(f"[face] {m}: {e}")
                 _fails += 1
-                if r.status_code == 429:
-                    _fails = max(_fails, 3)
-                    return None
-                continue
-            text = r.json()["candidates"][0]["content"]["parts"][0]["text"]
-            text = re.sub(r"//.*", "", text)
-            return json.loads(text)
-        except (requests.RequestException, KeyError, IndexError, ValueError) as e:
-            print(f"[face] {m}: {e}")
-            _fails += 1
+                break
     return None
+
+
+def _box(b):
+    """[ymin, xmin, ymax, xmax] 0-1000 -> (x0, y0, x1, y1) 0-1."""
+    try:
+        y0, x0, y1, x1 = [float(v) for v in b]
+    except (TypeError, ValueError):
+        return None
+    k = 1000.0 if max(y0, x0, y1, x1) > 1.5 else 1.0
+    x0, x1 = sorted((x0 / k, x1 / k))
+    y0, y1 = sorted((y0 / k, y1 / k))
+    if not (0 <= x0 < x1 <= 1 and 0 <= y0 < y1 <= 1):
+        return None
+    return x0, y0, x1, y1
+
+
+def from_gemini(info: dict, path: Path) -> dict | None:
+    """Đổi kết quả Gemini sang dạng dùng để vẽ, và KIỂM TRA hợp lý; sai thì bỏ (không nhép miệng)."""
+    if not info or not info.get("face"):
+        return None
+    face, mouth = _box(info.get("face_box")), _box(info.get("mouth_box"))
+    eyes = [_box(info.get(k)) for k in ("left_eye_box", "right_eye_box")]
+    if not face or not mouth:
+        return None
+    im = Image.open(path).convert("RGBA")
+    W, H = im.size
+    mx, my = (mouth[0] + mouth[2]) / 2, (mouth[1] + mouth[3]) / 2
+    fx0, fy0, fx1, fy1 = face
+    fw = fx1 - fx0
+    # miệng phải nằm trong mặt, ở nửa dưới của mặt, và trên phần ảnh có hình (không phải nền trong suốt)
+    if not (fx0 <= mx <= fx1 and fy0 + (fy1 - fy0) * 0.35 <= my <= fy1 + (fy1 - fy0) * 0.05):
+        print(f"[face] {path.name}: miệng ngoài vùng mặt, bỏ nhép miệng")
+        return None
+    if im.getpixel((min(W - 1, int(mx * W)), min(H - 1, int(my * H))))[3] < 128:
+        return None
+    mw = mouth[2] - mouth[0]
+    if not (0.12 * fw <= mw <= 0.8 * fw):
+        mw = 0.3 * fw
+    good_eyes = []
+    for e in eyes:
+        if e and e[3] < my and fx0 <= (e[0] + e[2]) / 2 <= fx1:
+            good_eyes.append([(e[0] + e[2]) / 2, (e[1] + e[3]) / 2, max(e[2] - e[0], e[3] - e[1]) / 2 * 1.05])
+    a = np.asarray(im).astype(np.float32)
+    skin = info.get("skin") if re.fullmatch(r"#[0-9a-fA-F]{6}", str(info.get("skin", ""))) else None
+    skin = _skin(a, a[..., 3] > 128, int(mx * W), int(my * H), int(mw * W)) or skin
+    return {"face": True, "eyes": good_eyes if len(good_eyes) == 2 else [],
+            "mouth": [mx, my], "mouth_width": mw * 1.1,
+            "mouth_h": (mouth[3] - mouth[1]), "has_mouth": True,
+            "mouth_open": bool(info.get("mouth_open")), "skin": skin, "source": "gemini"}
 
 
 def _heuristic(path: Path) -> dict:
@@ -179,20 +237,93 @@ def locate(path, override: dict | None = None, use_ai=True) -> dict:
     path = Path(path)
     cache = path.with_name(path.name + ".face.json")
     if override:
-        return override
+        return from_override(override, path)
     if cache.exists():
         try:
             return json.loads(cache.read_text())
         except ValueError:
             pass
-    info = _gemini(path) if use_ai else None
-    if info and info.get("face") and info.get("mouth"):
-        info["source"] = "gemini"
-        if not info.get("skin"):
-            info["skin"] = _heuristic(path).get("skin", "#F2C9A0")
-    elif info and info.get("face") is False:
-        info = {"face": False, "source": "gemini"}
-    else:
-        info = _heuristic(path)
+    raw = _gemini(path) if use_ai else None
+    info = from_gemini(raw, path)
+    if info is None:
+        # không chắc vị trí miệng thì KHÔNG vẽ miệng (vẽ lệch xấu hơn nhiều so với không nhép)
+        if os.environ.get("FACE_HEURISTIC") == "1":
+            info = _heuristic(path)
+        else:
+            info = {"face": False, "source": "none" if raw is None else "rejected"}
+        if raw is None:
+            return info  # lỗi mạng: không lưu cache để lần sau thử lại
     cache.write_text(json.dumps(info))
     return info
+
+
+def from_override(ov: dict, path: Path) -> dict:
+    """Vị trí mặt do Claude (hoặc người) ghi trong script.json: cast[i].faces.<base|expr>.
+    Dạng: {"face": false} | {"mouth_box": [x0, y0, x1, y1], "eyes": [[x, y, r], [x, y, r]], "mouth_open": bool}
+    (toạ độ 0..1 theo ảnh; x theo chiều ngang). Dạng cũ {"mouth": [x, y], "mouth_width": w} vẫn nhận."""
+    if not ov.get("face", True):
+        return {"face": False, "source": "claude"}
+    info = {"face": True, "source": "claude", "has_mouth": ov.get("has_mouth", True),
+            "mouth_open": bool(ov.get("mouth_open")), "eyes": ov.get("eyes") or []}
+    mb = ov.get("mouth_box")
+    if mb and len(mb) == 4:
+        x0, y0, x1, y1 = [float(v) for v in mb]
+        x0, x1 = sorted((x0, x1))
+        y0, y1 = sorted((y0, y1))
+        info["mouth"] = [(x0 + x1) / 2, (y0 + y1) / 2]
+        info["mouth_width"] = max(0.02, (x1 - x0) * 1.1)
+        info["mouth_h"] = y1 - y0
+    elif ov.get("mouth"):
+        info["mouth"] = [float(v) for v in ov["mouth"]][:2]
+        info["mouth_width"] = float(ov.get("mouth_width", 0.12))
+        info["mouth_h"] = float(ov.get("mouth_h", 0))
+    else:
+        return {"face": False, "source": "claude"}
+    im = Image.open(path).convert("RGBA")
+    a = np.asarray(im).astype(np.float32)
+    W, H = im.size
+    info["skin"] = ov.get("skin") or _skin(a, a[..., 3] > 128, int(info["mouth"][0] * W),
+                                           int(info["mouth"][1] * H), int(info["mouth_width"] * W))
+    return info
+
+
+def grid_sheet(path: Path, out: Path, info: dict | None, title: str):
+    """Ảnh nhân vật trên nền trắng + lưới toạ độ 0.1 (để Claude đọc vị trí mắt/miệng chính xác),
+    kèm khung đỏ = vị trí miệng hiện tại, xanh = mắt (nếu có)."""
+    from PIL import ImageDraw, ImageFont
+    im = Image.open(path).convert("RGBA")
+    k = 760 / im.height
+    im = im.resize((max(1, int(im.width * k)), 760), Image.LANCZOS)
+    pad = 40
+    W, H = im.width + pad * 2, im.height + pad * 2 + 30
+    sheet = Image.new("RGB", (W, H), "white")
+    sheet.paste(im, (pad, pad + 30), im)
+    d = ImageDraw.Draw(sheet)
+    try:
+        f = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 13)
+        fb = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 16)
+    except OSError:
+        f = fb = ImageFont.load_default()
+    d.text((pad, 6), title, fill="black", font=fb)
+    ox, oy, iw, ih = pad, pad + 30, im.width, im.height
+    for i in range(11):
+        v = i / 10
+        x, y = ox + v * iw, oy + v * ih
+        col = (120, 170, 255) if i % 5 else (40, 90, 220)
+        d.line([(x, oy), (x, oy + ih)], fill=col, width=1)
+        d.line([(ox, y), (ox + iw, y)], fill=col, width=1)
+        d.text((x - 8, oy - 16), f"{v:.1f}", fill=(40, 90, 220), font=f)
+        d.text((4, y - 7), f"{v:.1f}", fill=(40, 90, 220), font=f)
+    if info and info.get("face") and info.get("mouth"):
+        mx, my = info["mouth"]
+        mw = info.get("mouth_width", 0.1) / 1.1
+        mh = max(info.get("mouth_h", 0), 0.02)
+        d.rectangle([ox + (mx - mw / 2) * iw, oy + (my - mh / 2) * ih, ox + (mx + mw / 2) * iw,
+                     oy + (my + mh / 2) * ih], outline=(230, 30, 30), width=3)
+        for e in info.get("eyes") or []:
+            ex, ey, er = e
+            d.ellipse([ox + (ex - er) * iw, oy + ey * ih - er * iw, ox + (ex + er) * iw, oy + ey * ih + er * iw],
+                      outline=(30, 160, 60), width=3)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    sheet.save(out, "JPEG", quality=88)
+    return out
