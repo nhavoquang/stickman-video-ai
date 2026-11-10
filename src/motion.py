@@ -25,6 +25,14 @@ SFX_FOR = {"enter": "pop", "exit": "whoosh", "expr": "pop", "burst": "ding", "la
 
 # ------------------------------------------------------------------ easing ---
 
+def _sc(ctx, x, y=None):
+    """ctx.scale an toàn: tỉ lệ 0 (lúc hiệu ứng pop bắt đầu) làm cairo lỗi 'invalid matrix'."""
+    y = x if y is None else y
+    x = x if abs(x) > 1e-3 else (1e-3 if x >= 0 else -1e-3)
+    y = y if abs(y) > 1e-3 else (1e-3 if y >= 0 else -1e-3)
+    ctx.scale(x, y)
+
+
 def clamp(v, a=0.0, b=1.0):
     return max(a, min(b, v))
 
@@ -392,7 +400,7 @@ def draw_reaction(ctx, icon, k, x, top, hh):
     bob = math.sin(k * 7) * r * 0.12
     ctx.save()
     ctx.translate(x + r * 0.6, top - r * 0.9 + bob)
-    ctx.scale(pop, pop)
+    _sc(ctx, pop, pop)
     ctx.rotate(math.radians(8 * math.sin(k * 5)))
     ink = (0.1, 0.08, 0.12)
     lw = r * 0.16
@@ -421,7 +429,7 @@ def draw_reaction(ctx, icon, k, x, top, hh):
             ctx.restore()
     elif icon == "?":
         ctx.select_font_face("DejaVu Sans", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_BOLD)
-        ctx.set_font_size(r * 2.4)
+        ctx.set_font_size(max(0.5, r * 2.4))
         ext = ctx.text_extents("?")
         ctx.move_to(-ext.width / 2 - ext.x_bearing, ext.height / 2)
         ctx.text_path("?")
@@ -430,7 +438,7 @@ def draw_reaction(ctx, icon, k, x, top, hh):
         for j, (dx, dy, sc) in enumerate(((0, 0, 1), (0.9, -0.8, 0.55))):
             ctx.save()
             ctx.translate(dx * r, dy * r + math.sin(k * 6 + j) * r * 0.1)
-            ctx.scale(sc, sc)
+            _sc(ctx, sc, sc)
             ctx.move_to(0, r * 0.7)
             ctx.curve_to(-r * 1.3, -r * 0.2, -r * 0.6, -r * 1.2, 0, -r * 0.45)
             ctx.curve_to(r * 0.6, -r * 1.2, r * 1.3, -r * 0.2, 0, r * 0.7)
@@ -793,7 +801,7 @@ class Renderer:
         ctx.translate(x, y)
         ctx.rotate(math.radians(st["rot"]))
         ctx.transform(cairo.Matrix(1, 0, -lean, 1, 0, 0))  # nghiêng phần trên, giữ chân đứng yên
-        ctx.scale(s * sx * (-1 if st["flip"] else 1), s * sy)
+        _sc(ctx, s * sx * (-1 if st["flip"] else 1), s * sy)
         ax, ay = abs(s * sx), abs(s * sy)
         scale_ok = min(ax, ay) / max(ax, ay) > 0.15  # co méo quá mức (spin/squash)
         n = 3 if st["blur"] > 0.2 else 1  # mờ chuyển động khi lướt nhanh
@@ -932,7 +940,7 @@ class Renderer:
                 a_in = clamp(k / 0.4) * clamp(min(u, 1 - u) / 0.08) * fade
                 ctx.save()
                 ctx.translate(px, py)
-                ctx.scale(size, size)
+                _sc(ctx, size, size)
                 ctx.set_source_surface(surf, -surf.get_width() / 2, -surf.get_height() / 2)
                 ctx.paint_with_alpha(a_in)
                 ctx.restore()
@@ -954,11 +962,11 @@ class Renderer:
         size = float(ev.get("size", 1.0)) * (64 if style == "title" else 46) / z * (SV.H / 1080) ** 0.5
         ctx.save()
         ctx.translate(x, y)
-        ctx.scale(s, s)
+        _sc(ctx, s, s)
         ctx.rotate(math.radians(float(ev.get("rot", -3 if style == "tag" else 0))))
         slant = cairo.FONT_SLANT_ITALIC if style == "map" else cairo.FONT_SLANT_NORMAL
         ctx.select_font_face(SV.FONT if style != "map" else "DejaVu Serif", slant, cairo.FONT_WEIGHT_BOLD)
-        ctx.set_font_size(size)
+        ctx.set_font_size(max(0.5, size))
         ext = ctx.text_extents(text)
         tw, th = ext.x_advance, size
         if style == "tag":
@@ -1019,7 +1027,7 @@ class Renderer:
             rr = r * D * (0.6 + depth)
             ctx.save()
             ctx.translate(x - rr, y - rr)
-            ctx.scale(rr / 32, rr / 32)
+            _sc(ctx, rr / 32, rr / 32)
             ctx.set_source_surface(self._dot, 0, 0)
             ctx.paint_with_alpha(a)
             ctx.restore()
@@ -1046,7 +1054,7 @@ class Renderer:
         sizes, widths = [], []
         for (a, b, w, wi) in words:
             fs = base * (1.32 if wi in self.f.emph else 1.0)
-            ctx.set_font_size(fs)
+            ctx.set_font_size(max(0.5, fs))
             sizes.append(fs)
             widths.append(ctx.text_extents(w.upper()).x_advance + (fs * 0.42 if sep else fs * 0.08))
         total = sum(widths)
@@ -1063,12 +1071,12 @@ class Renderer:
             cur = a <= t < b + 0.05
             txt = w.upper()
             ctx.save()
-            ctx.set_font_size(fs * k)
+            ctx.set_font_size(max(0.5, fs * k))
             ext = ctx.text_extents(txt)
             cx, cy = x + ext.x_advance / 2, y - (fs * k) * 0.35
             ctx.translate(cx, cy)
             ctx.rotate(math.radians(-4 if emph else 0))
-            ctx.scale(sc * (1.08 if cur else 1), sc * (1.08 if cur else 1))
+            _sc(ctx, sc * (1.08 if cur else 1), sc * (1.08 if cur else 1))
             ctx.translate(-ext.x_advance / 2, (fs * k) * 0.35)
             # bóng đổ + viền dày
             ctx.move_to(fs * k * 0.05, fs * k * 0.07)
@@ -1245,15 +1253,14 @@ def render(film_json, timings, assets, voice_wav, out_mp4, music=None, cwd=None,
            str(Path(out_mp4).resolve())]
     proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, cwd=cwd)
     prev = None
-    for fi in range(nframes):
-        t = fi / FPS
-        ctx.save()
+    last_good = None
+    errors = 0
+
+    def draw(surf, t, fast):
+        ctx = cairo.Context(surf)  # context mới mỗi khung: lỗi cairo (dính) không lan sang khung sau
         ctx.set_source_rgb(0, 0, 0)
         ctx.paint()
-        # camera lướt nhanh → trộn 3 khung phụ để có mờ chuyển động
-        cam = film.camera_at(t)
-        fast = prev is not None and (abs(cam[0] - prev[0]) + abs(cam[1] - prev[1])) * 1.5 + abs(cam[2] - prev[2]) * 0.4 > 0.012
-        if fast:
+        if fast:  # camera lướt nhanh → trộn 3 khung phụ để có mờ chuyển động
             for i, dt in enumerate((0.0, -0.33 / FPS, -0.66 / FPS)):
                 ctx.push_group()
                 r.frame(ctx, max(0.0, t + dt))
@@ -1261,10 +1268,30 @@ def render(film_json, timings, assets, voice_wav, out_mp4, music=None, cwd=None,
                 ctx.paint_with_alpha(1 / (i + 1))
         else:
             r.frame(ctx, t)
-        ctx.restore()
+
+    for fi in range(nframes):
+        t = fi / FPS
+        cam = film.camera_at(t)
+        fast = prev is not None and (abs(cam[0] - prev[0]) + abs(cam[1] - prev[1])) * 1.5 + abs(cam[2] - prev[2]) * 0.4 > 0.012
+        try:
+            draw(surf, t, fast)
+        except cairo.Error as e:
+            # một khung lỗi không được làm hỏng cả video: thử lệch thời gian một chút, không được thì lặp khung trước
+            errors += 1
+            print(f"[motion] khung {t:.3f}s lỗi cairo: {e} -> thử lại")
+            surf = cairo.ImageSurface(cairo.FORMAT_ARGB32, W, H)
+            try:
+                draw(surf, t + 0.004, False)
+            except cairo.Error:
+                surf = cairo.ImageSurface(cairo.FORMAT_ARGB32, W, H)
+                if last_good is not None:
+                    surf.get_data()[:] = last_good
+            if errors > 300:
+                raise
         prev = cam
         surf.flush()
-        proc.stdin.write(bytes(surf.get_data()))
+        last_good = bytes(surf.get_data())
+        proc.stdin.write(last_good)
         if fi % (FPS * 10) == 0:
             print(f"[motion] {t:.0f}/{film.total:.0f}s")
     proc.stdin.close()

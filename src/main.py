@@ -117,6 +117,7 @@ def run_motion(a, n_scenes, size, vertical, font, font_path):
     sheets = contact_sheets(frames, review / "scenes", per_sheet=12)
     imgs = [v for k, v in assets.items()]
     asset_sheets = contact_sheets([Path(x) for x in imgs], review / "assets", per_sheet=16, thumb_w=360)
+    (work / "timings.json").write_text(json.dumps(timings))
     total = sum(d for d, _ in timings)
     report = {"total_seconds": round(total, 1), "target_seconds": a.duration,
               "events": sum(len(s["events"]) for s in film["scenes"]),
