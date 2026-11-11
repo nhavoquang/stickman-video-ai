@@ -75,13 +75,16 @@ def _snare(dur=0.2, seed=5):
 
 def _add(buf, x, start):
     i = int(start * SR)
-    if i >= len(buf):
+    if i < 0:  # bắt đầu trước 0 (lưới nhịp lệch pha): bỏ phần đầu
+        x, i = x[-i:], 0
+    if i >= len(buf) or len(x) == 0:
         return
     m = min(len(x), len(buf) - i)
     buf[i:i + m] += x[:m]
 
 
-def build(total: float, out: Path, mood="upbeat", seed=7) -> Path:
+def build(total: float, out: Path, mood="upbeat", seed=7, downbeat_at=0.0) -> Path:
+    """downbeat_at: thời điểm (giây) phải rơi đúng phách mạnh đầu ô nhịp (vd. lúc chớp trắng sau hook)."""
     bpm, prog, swing, drums = MOODS.get(mood, MOODS["upbeat"])
     beat = 60 / bpm
     bar = beat * 4
@@ -91,7 +94,8 @@ def build(total: float, out: Path, mood="upbeat", seed=7) -> Path:
     dr = np.zeros(n)
     rng = np.random.default_rng(seed)
     kick, hat, snare = _kick(), _hat(), _snare()
-    t, b = 0.0, 0
+    t = (downbeat_at % bar) - bar if downbeat_at else 0.0
+    b = 0
     pluck_cache = {}
     while t < total + 1:
         root, kind = prog[b % len(prog)]

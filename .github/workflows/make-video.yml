@@ -140,6 +140,13 @@ jobs:
             python src/main.py --topic "$TOPIC" --notes="$NOTES" "${COMMON[@]}"
           fi
 
+      - name: Báo cáo kiểm tra video (QA)
+        if: always()
+        run: |
+          if [ -f output/review/qa/report.md ]; then
+            { echo "## Kiểm tra video (QA)"; echo '```'; cat output/review/qa/report.md; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: Tải gói YouTube về (video, thumbnail, tiêu đề, mô tả, tags)
         uses: actions/upload-artifact@v4
         with:
@@ -156,5 +163,6 @@ jobs:
             output/script.json
             output/review_notes.md
             output/review/*.jpg
+            output/review/qa/
           retention-days: 14
           if-no-files-found: ignore

@@ -7,6 +7,7 @@ mọi thứ khớp với thời điểm từng từ trong giọng đọc. Xem pr
 import math
 import random
 import subprocess
+import zlib
 from pathlib import Path
 
 import cairo
@@ -40,6 +41,30 @@ def clamp(v, a=0.0, b=1.0):
 def ease_io(t):
     t = clamp(t)
     return 4 * t ** 3 if t < 0.5 else 1 - (-2 * t + 2) ** 3 / 2
+
+
+def smoother(t):
+    """smootherstep: vào và ra đều êm (đỉnh tốc độ 1.875× trung bình) — kiểu lướt máy của video mẫu."""
+    t = clamp(t)
+    return t * t * t * (t * (t * 6 - 15) + 10)
+
+
+# Nhịp camera đo từ 20 video Shorts viral (claude-animated-shorts, references/reports/motion.md):
+# - giữ cảnh không bao giờ đứng yên: luôn đẩy vào 0,15–0,35 %/khung (không lắc lư hình sin),
+# - mỗi cú lướt 18–40 khung (0,6–1,3 s), êm cả hai đầu,
+# - rung khi va chạm đổi chiều MỖI khung và tắt sau ~7 khung,
+# - mọi phản ứng hình xuất hiện sớm hơn chữ 0–3 khung.
+PUSH_RATE = 0.0025      # tốc độ đẩy vào lúc bắt đầu giữ cảnh (0,25 %/khung)
+PUSH_MAX = 0.14         # tổng đẩy vào tối đa trong một lần giữ (+14 %)
+CAM_MIN, CAM_MAX = 0.6, 1.4
+SHAKE_FRAMES = 7
+LEAD = 2 / FPS          # hình đến trước chữ 2 khung
+HOOK_FLASH_FRAMES = 4
+MAX_PUNCHES = 3
+CRASH_FRAMES = 6        # cú zoom "dí sát" (crash zoom): 6 khung tăng tốc, vượt 4,5 % rồi bật về trong 5 khung
+# Nhép miệng hay lỗi (miệng lệch, hai miệng) nên TẮT mặc định: giữ nguyên miệng gốc của ảnh, chỉ chớp mắt.
+# Bật lại cho từng video bằng "lipsync": true trong script.json.
+LIPSYNC = False
 
 
 def ease_out(t):
@@ -120,7 +145,7 @@ class Film:
             # đổi sân khấu ở đầu cảnh
             if si == 0 or sc.get("stage") != film["scenes"][si - 1].get("stage"):
                 self.events.append((t0, si, {"do": "stage", "id": sc.get("stage"),
-                                             "transition": sc.get("transition", "whip")}))
+                                             "transition": sc.get("transition", "fade")}))
             for ev in sc.get("events", []):
                 at = ev.get("at", 0)
                 try:
@@ -134,7 +159,8 @@ class Film:
                     t = a + (b - a) * frac
                 else:
                     t = 0
-                self.events.append((t0 + max(0.0, t) + float(ev.get("delay", 0)), si, ev))
+                lead = 0.0 if (si == 0 and i == 0 and frac == 0) else LEAD
+                self.events.append((max(t0, t0 + t - lead) + float(ev.get("delay", 0)), si, ev))
             t0 += dur
         self.total = t0
         self._emphasis()
@@ -149,7 +175,8 @@ class Film:
             w = unicodedata.normalize("NFC", w.lower())
             return re.sub(r"[^\w%$€£¥]+", "", w)
         self.emph = set()
-        self.punches = []
+        self.emph_starts = []  # mọi từ nhấn: chữ phụ đề nảy + tiếng tick (chỉ tác động phần tử)
+        self.punches = []      # cú giật CẢ KHUNG (zoom + loé sáng): tối đa 3 lần, cách nhau ≥ 8 s
         for i, (a, b, w, si) in enumerate(self.words):
             sc = self.film["scenes"][si]
             keys = {norm(x) for k in sc.get("emphasis", []) for x in str(k).split()}
@@ -157,8 +184,16 @@ class Film:
             if (norm(w) and norm(w) in keys) or re.search(r"\d", w) or \
                     (len(raw) >= 2 and raw.isupper() and raw.isalpha()):
                 self.emph.add(i)
-                if not self.punches or a - self.punches[-1] > 1.2:
-                    self.punches.append(a)
+                if not self.emph_starts or a - self.emph_starts[-1] > 1.2:
+                    self.emph_starts.append(a)
+        # Quy tắc video-shotcraft R4: tác động lên cả khung hình (giật zoom, loé sáng, rung) dùng quá nhiều
+        # thì đọc như rung giật; giữ ≤ 3 cú cho những từ nhấn quan trọng, bỏ qua câu hook (đã có chớp trắng).
+        hook_end = self.scene_spans[1][0] if len(self.scene_spans) > 1 else 0
+        for a in self.emph_starts:
+            if len(self.punches) >= MAX_PUNCHES:
+                break
+            if a > hook_end + 0.5 and (not self.punches or a - self.punches[-1] >= 8.0):
+                self.punches.append(a)
 
     def punch_at(self, t):
         """0..1: độ 'giật' camera ngắn ngay khi nói từ khoá."""
@@ -173,7 +208,7 @@ class Film:
         """Mỗi đối tượng: danh sách sự kiện theo thời gian. Đổi sân khấu thì xoá sân khấu cũ."""
         self.objects = {}   # oid -> dict(kind, events[], born, died)
         self.stage_changes = []
-        self.cameras = []   # (t, x, y, zoom, dur)
+        self.cameras = []   # (t, x, y, zoom, dur, roll)
         self.shakes = []
         self.overlays = []  # arrow/line/highlight/label/burst: (t, ev, end_t)
         self.reactions = []  # (t, oid, icon): biểu tượng cảm xúc trên đầu nhân vật
@@ -181,17 +216,18 @@ class Film:
         for t, si, ev in self.events:
             do = ev.get("do")
             if do == "stage":
-                self.stage_changes.append((t, ev.get("id"), ev.get("transition", "whip")))
+                self.stage_changes.append((t, ev.get("id"), ev.get("transition", "fade")))
                 gen += 1
                 for o in self.objects.values():
                     if o["died"] is None:
                         o["died"] = t
                 # góc máy mặc định khi vào sân khấu mới
-                self.cameras.append((t, 0.5, 0.55, 1.0, 0.01))
+                self.cameras.append((t, 0.5, 0.55, 1.0, 0.01, 0.0, False))
                 continue
             if do == "camera":
                 self.cameras.append((t, float(ev.get("x", 0.5)), float(ev.get("y", 0.5)),
-                                     float(ev.get("zoom", 1.0)), float(ev.get("dur", EV_DUR["camera"]))))
+                                     float(ev.get("zoom", 1.0)), float(ev.get("dur", EV_DUR["camera"])),
+                                     float(ev.get("roll", 0.0)), bool(ev.get("crash", False))))
             elif do == "shake":
                 self.shakes.append((t, float(ev.get("strength", 1.0))))
             elif do in ("arrow", "line", "highlight", "label", "burst", "flow"):
@@ -225,33 +261,58 @@ class Film:
 
     # ---------------- trạng thái tại thời điểm t
     def stage_at(self, t):
-        cur, prev, tchange, trans = None, None, -9, "whip"
+        cur, prev, tchange, trans = None, None, -9, "fade"
         for tc, sid, tr in self.stage_changes:
             if tc <= t + 1e-9:
                 prev, cur, tchange, trans = cur, sid, tc, tr
         return cur, prev, tchange, trans
 
     def camera_at(self, t):
+        """(x, y, zoom, roll) tại t. Mỗi cú lướt smootherstep 0,6–1,4 s (cú dài thì lâu hơn để không giật);
+        giữa các cú lướt camera luôn đẩy vào chậm dần (không lắc lư)."""
         cams = [c for c in self.cameras if c[0] <= t + 1e-9]
         if not cams:
-            return 0.5, 0.55, 1.0
-        # bắt đầu từ góc máy của lần đổi sân khấu gần nhất
+            return 0.5, 0.55, 1.0, 0.0
         st = max([c[0] for c in self.stage_changes if c[0] <= t + 1e-9] or [0])
         cams = [c for c in cams if c[0] >= st - 1e-9]
-        x, y, z = cams[0][1], cams[0][2], cams[0][3]
-        for (tc, cx, cy, cz, d) in cams[1:]:
-            k = ease_io((t - tc) / max(d, 0.01))
-            x, y, z = x + (cx - x) * k, y + (cy - y) * k, z + (cz - z) * k
-        # trôi nhẹ liên tục (không bao giờ đứng yên)
-        z *= 1 + 0.018 * math.sin((t - st) * 0.35) + 0.012 * (t - st) / 6
-        x += 0.006 * math.sin((t - st) * 0.27)
-        return x, y, z
+        x, y, z, r = cams[0][1], cams[0][2], cams[0][3], cams[0][5]
+        hold_from = cams[0][0]
+        overshoot = None
+        for (tc, cx, cy, cz, d, cr, crash) in cams[1:]:
+            # trạng thái thật lúc bắt đầu cú lướt (đã gồm phần đẩy vào) → không bị nhảy
+            z0 = z * self._push(tc - hold_from) if overshoot is None else z
+            overshoot = None
+            if crash:  # "nhìn cái này!": 6 khung tăng tốc dồn (ease-in), tới nơi vượt nhẹ rồi bật về
+                d = CRASH_FRAMES / FPS
+                k = clamp((t - tc) / d) ** 3
+            else:
+                dist = abs(cx - x) + abs(cy - y) + abs(math.log(max(cz, 0.05) / max(z0, 0.05)))
+                d = clamp(max(d, CAM_MIN + 0.8 * min(1.0, dist)), CAM_MIN, CAM_MAX)
+                k = smoother((t - tc) / d)
+            x, y, z, r = x + (cx - x) * k, y + (cy - y) * k, z0 + (cz - z0) * k, r + (cr - r) * k
+            hold_from = tc + d
+            if t < tc + d:
+                return x, y, z, r
+            if crash:
+                overshoot = tc + d
+        if overshoot is not None:
+            q = (t - overshoot) * FPS / 5
+            if q < 1:
+                z *= 1 + 0.045 * (1 - smoother(q))
+        return x, y, z * self._push(t - hold_from), r
+
+    @staticmethod
+    def _push(dt):
+        if dt <= 0:
+            return 1.0
+        k = PUSH_RATE * FPS / PUSH_MAX
+        return 1 + PUSH_MAX * (1 - math.exp(-dt * k))
 
 
 def obj_state(o, t, film_assets):
     """Vị trí, cỡ, góc, độ mờ, ảnh của một đối tượng tại thời điểm t."""
     st = {"x": 0.5, "y": 0.7, "size": 0.4, "rot": 0.0, "alpha": 1.0, "sx": 1.0, "sy": 1.0,
-          "dx": 0.0, "dy": 0.0, "flip": False, "expr": None, "blur": 0.0, "lean": 0.0}
+          "dx": 0.0, "dy": 0.0, "flip": False, "expr": None, "blur": 0.0, "lean": 0.0, "expr_t": -9.0}
     for te, ev in o["events"]:
         if te > t:
             break
@@ -361,6 +422,7 @@ def obj_state(o, t, film_assets):
                     st["dx"] += 0.004 * math.sin(p * 90)
         elif do == "expr":
             st["expr"] = ev.get("expr")
+            st["expr_t"] = te
             p = k / EV_DUR["expr"]
             if p < 1:
                 sq = math.sin(p * math.pi) * 0.12
@@ -525,18 +587,43 @@ def _mood(expr):
     return "smile"
 
 
-def draw_face(ctx, fc, iw, ih, t, seed, talk, word, expr):
+_BLINKS = {}
+_BLINK_SHAPE = (0.55, 1.0, 1.0, 0.55)  # 4 khung: nửa / nhắm / nhắm / nửa
+
+
+def blink_level(t, seed, expr_t=-9.0):
+    """0..1 độ nhắm mắt. Chớp ngẫu nhiên mỗi 0,5–2,3 s (như video mẫu) + chớp ngay khi đổi biểu cảm."""
+    times = _BLINKS.get(seed)
+    if times is None:
+        rnd = random.Random(int(seed * 1000) + 7)
+        times, x = [], rnd.uniform(0.2, 1.2)
+        while x < 3600:
+            times.append(x)
+            x += rnd.uniform(0.5, 2.3) if rnd.random() < 0.8 else rnd.uniform(2.3, 3.5)
+        _BLINKS[seed] = times
+    import bisect
+    cands = [expr_t]
+    i = bisect.bisect_right(times, t) - 1
+    if i >= 0:
+        cands.append(times[i])
+    best = 0.0
+    for tb in cands:
+        n = int((t - tb) * FPS)
+        if 0 <= n < len(_BLINK_SHAPE):
+            best = max(best, _BLINK_SHAPE[n])
+    return best
+
+
+def draw_face(ctx, fc, iw, ih, t, seed, talk, word, expr, expr_t=-9.0, allow_blink=True):
     """Vẽ miệng nhép theo giọng (và chớp mắt) lên ảnh nhân vật, toạ độ theo pixel ảnh."""
     skin = _hex(fc.get("skin", "#F2C9A0"))
     ink = (0.16, 0.08, 0.08)
     mx, my = fc["mouth"][0] * iw, fc["mouth"][1] * ih
     mw = max(6.0, float(fc.get("mouth_width", 0.12)) * iw)
     mood = _mood(expr)
-    # --- chớp mắt mỗi ~3-5 giây
+    # --- chớp mắt
     eyes = fc.get("eyes") or []
-    period = 3.4 + (seed % 1.7)
-    ph = (t + seed) % period
-    blink = math.sin(ph / 0.16 * math.pi) if ph < 0.16 else 0.0
+    blink = blink_level(t, seed, expr_t) if allow_blink else 0.0
     if blink > 0.05 and len(eyes) == 2:
         for ex, ey, er in eyes:
             ex, ey, er = ex * iw, ey * ih, max(3.0, er * iw)
@@ -555,7 +642,7 @@ def draw_face(ctx, fc, iw, ih, t, seed, talk, word, expr):
                 ctx.move_to(ex - er, lid - er * 0.1)
                 ctx.curve_to(ex - er * 0.4, lid + er * 0.35, ex + er * 0.4, lid + er * 0.35, ex + er, lid - er * 0.1)
                 ctx.stroke()
-    if fc.get("mouth_open"):
+    if not LIPSYNC or fc.get("mouth_open"):
         return  # ảnh gốc vẽ miệng há to (có răng/lưỡi): giữ nguyên, che đi sẽ lộ vết
     # --- xoá miệng gốc (nếu có) bằng màu da, mép mềm
     if fc.get("has_mouth", True):
@@ -679,26 +766,32 @@ class Renderer:
 
     # -- camera
     def _view(self, sid, t, offset=(0, 0)):
-        surf = self.img.get(self.stage_surf[sid], blur=6 if self.dof.get(sid) else 0)
+        surf = self.img.get(self.stage_surf[sid])
         sw, sh = surf.get_width(), surf.get_height()
-        cx, cy, z = self.f.camera_at(t)
+        cx, cy, z, roll = self.f.camera_at(t)
+        # xoá phông theo độ gần của camera: cảnh rộng giữ nét, cận cảnh nền mờ (≈1/3 thời lượng như video mẫu)
+        self._dof_amt = 1.0 if self.dof.get(sid) else clamp((z - 1.3) / 0.35)
         zmin = max(self.W / sw, self.H / sh) * 1.001
         z = max(z, zmin) * (1 + 0.075 * self.f.punch_at(t))
         vw, vh = self.W / z, self.H / z
         px = clamp(cx * sw, vw / 2, sw - vw / 2) + offset[0] * vw
         py = clamp(cy * sh, vh / 2, sh - vh / 2) + offset[1] * vh
-        # rung camera
+        # rung khi va chạm: đổi chiều mỗi khung, tắt dần sau SHAKE_FRAMES khung
         for ts, s in self.f.shakes:
-            if 0 <= t - ts < 0.45:
-                a = (1 - (t - ts) / 0.45) * 14 * s / z
-                px += a * math.sin(t * 90)
-                py += a * math.cos(t * 77)
-        return surf, sw, sh, px, py, z
+            n = int(round((t - ts) * FPS))
+            if 0 <= n < SHAKE_FRAMES:
+                a = (1 - n / SHAKE_FRAMES) * 9 * s / z * self.H / 1080 * (-1 if n % 2 else 1)
+                px += a
+                py += a * 0.6
+                roll += 0.3 * s * (1 - n / SHAKE_FRAMES) * (1 if n % 2 else -1)
+        return surf, sw, sh, px, py, z, roll
 
     def _apply_cam(self, ctx, view):
-        surf, sw, sh, px, py, z = view
+        surf, sw, sh, px, py, z, roll = view
         ctx.translate(self.W / 2, self.H / 2)
-        ctx.scale(z, z)
+        if roll:
+            ctx.rotate(math.radians(roll))
+        ctx.scale(z * (1 + abs(math.radians(roll)) * 0.9), z * (1 + abs(math.radians(roll)) * 0.9))
         ctx.translate(-px, -py)
 
     def draw_world(self, ctx, sid, t, offset=(0, 0)):
@@ -714,6 +807,12 @@ class Renderer:
         ctx.set_source_surface(surf, 0, 0)
         ctx.get_source().set_filter(cairo.FILTER_GOOD)
         ctx.paint()
+        amt = getattr(self, "_dof_amt", 0.0)
+        if amt > 0.02:
+            blur = self.img.get(self.stage_surf[sid], blur=6)
+            ctx.set_source_surface(blur, 0, 0)
+            ctx.get_source().set_filter(cairo.FILTER_GOOD)
+            ctx.paint_with_alpha(amt)
         # đối tượng thuộc sân khấu này, sắp theo chiều sâu (y)
         objs = []
         for oid, o in self.f.objects.items():
@@ -769,7 +868,7 @@ class Renderer:
         iw, ih = surf.get_width(), surf.get_height()
         h_px = st["size"] * sh  # cao theo tỉ lệ chiều cao sân khấu
         s = h_px / ih
-        seed = (hash(o["id"]) % 100) / 10
+        seed = (zlib.crc32(str(o["id"]).encode()) % 100) / 10  # cố định giữa các lần chạy (hash() thì không)
         breathe = 1 + 0.014 * math.sin(t * 2.6 + seed)
         si = next((i for i, (a, b, _) in enumerate(self.f.scene_spans) if a <= t < b), 0)
         talk, word = 0.0, ""
@@ -820,7 +919,7 @@ class Renderer:
             ctx.paint_with_alpha(st["alpha"] / n * (1.6 if n > 1 else 1))
         if fc and n == 1 and st["alpha"] > 0.6 and h_on_screen(s, sy, ih) > 60:
             ctx.translate(-iw / 2, -ih)
-            draw_face(ctx, fc, iw, ih, t, seed, talk, word, mood)
+            draw_face(ctx, fc, iw, ih, t, seed, talk, word, mood, st.get("expr_t", -9.0))
         ctx.restore()
 
     def _draw_overlay(self, ctx, ev, k, left, sw, sh, z):
@@ -884,18 +983,26 @@ class Renderer:
         elif do == "highlight":
             x, y = ev.get("x", 0.5) * sw, ev.get("y", 0.5) * sh
             r = float(ev.get("r", 0.12)) * self.H
-            p = ease_out(k / EV_DUR["highlight"])
-            ctx.save()
-            ctx.translate(x, y)
-            ctx.scale(1.25, 1)
-            ctx.new_path()
-            ctx.arc(0, 0, r, -math.pi / 2, -math.pi / 2 + 2 * math.pi * 1.05 * p)
-            ctx.restore()
+            # vòng bút dạ vẽ tay: 10 khung một nét, 1,08 vòng không khép, bán kính hơi run, nét dày giữa mỏng 2 đầu
+            p = ease_out(k / (10 / FPS))
             c = _hex(ev.get("color", "#FFD400"))
-            ctx.set_source_rgba(*c, fade)
-            ctx.set_line_width(9 / z)
+            rnd = random.Random(int(x) * 31 + int(y))
+            ph1, ph2 = rnd.uniform(0, 6.28), rnd.uniform(0, 6.28)
+            turns, steps = 1.08 * p, 48
+            pts = []
+            for i in range(int(steps * p) + 2):
+                u = min(i / steps, p)
+                a = -math.pi * 0.6 + 2 * math.pi * 1.08 * u
+                rr = r * (1 + 0.05 * math.sin(a * 2 + ph1) + 0.03 * math.sin(a * 5 + ph2) + 0.06 * u)
+                pts.append((x + math.cos(a) * rr * 1.25, y + math.sin(a) * rr, u))
             ctx.set_line_cap(cairo.LINE_CAP_ROUND)
-            ctx.stroke()
+            for (x0, y0, u0), (x1, y1, u1) in zip(pts, pts[1:]):
+                w = 11 / z * (0.55 + 0.45 * math.sin(math.pi * min(1.0, u0 / 1.08)))
+                ctx.move_to(x0, y0)
+                ctx.line_to(x1, y1)
+                ctx.set_source_rgba(*c, fade)
+                ctx.set_line_width(w)
+                ctx.stroke()
         elif do == "label":
             self._label(ctx, ev, k, fade, sw, sh, z)
         elif do == "burst":
@@ -960,7 +1067,7 @@ class Renderer:
         x, y = ev.get("x", 0.5) * sw, ev.get("y", 0.4) * sh
         # giữ nhãn luôn nằm trong khung hình đang quay
         if self._cur_view:
-            _, _, _, px, py, vz = self._cur_view
+            _, _, _, px, py, vz = self._cur_view[:6]
             vw, vh = self.W / vz, self.H / vz
             x = clamp(x, px - vw * 0.38, px + vw * 0.38)
             y = clamp(y, py - vh * 0.40, py + vh * 0.25)
@@ -1053,7 +1160,8 @@ class Renderer:
             return
         words = g[2]
         vertical = self.H > self.W
-        base = (74 if vertical else 62) * (self.W / 1080 if vertical else self.H / 1080)
+        # chữ phụ đề cao ≥ 5 % khung hình để đọc được trên điện thoại (video-shotcraft Q11)
+        base = (100 if vertical else 62) * (self.W / 1080 if vertical else self.H / 1080)
         y = self.H * (0.73 if vertical else 0.86)
         sep = "" if SV.LANG in SV.NO_SPACE_LANGS else " "
         ctx.save()
@@ -1116,7 +1224,7 @@ class Renderer:
                 cur = []
             cur.append((a, b, w, wi))
             chars = sum(len(x[2]) for x in cur)
-            if len(cur) >= maxw or chars > 15 or w[-1:] in ",.!?;:…" or wi in self.f.emph:
+            if len(cur) >= maxw or chars > (12 if self.H > self.W else 15) or w[-1:] in ",.!?;:…" or wi in self.f.emph:
                 out.append(cur)
                 cur = []
         if cur:
@@ -1131,15 +1239,25 @@ class Renderer:
     # -- một khung hình hoàn chỉnh
     def frame(self, ctx, t):
         sid, prev, tc, trans = self.f.stage_at(t)
-        T = 0.32  # chuyển cảnh
-        if prev and t - tc < T / 2 and trans != "cut":
+        T = 0.32  # chuyển cảnh whip/zoom
+        XF = 7 / FPS  # hoà tan khi đổi nơi chốn (6–8 khung như video mẫu)
+        if prev and trans == "fade" and t - tc < XF:
+            k = smoother((t - tc) / XF)
+            ctx.save()
+            self.draw_world(ctx, sid, t)
+            ctx.restore()
+            ctx.push_group()
+            self.draw_world(ctx, prev, tc - 1e-3)
+            ctx.pop_group_to_source()
+            ctx.paint_with_alpha(1 - k)
+        elif prev and trans in ("whip", "zoom") and t - tc < T / 2:
             # nửa đầu: cảnh cũ lướt nhanh ra
             k = (t - tc) / (T / 2)
             if trans == "zoom":
                 self._zoom_through(ctx, prev, tc - 1e-3, 1 + k * 0.6, 1 - k * 0.5)
             else:
                 self._blurred(ctx, prev, tc - 1e-3, (ease_io(k) * 0.8, 0), 0.7)
-        elif prev and t - tc < T and trans != "cut":
+        elif prev and trans in ("whip", "zoom") and t - tc < T:
             k = (t - tc - T / 2) / (T / 2)
             if trans == "zoom":
                 self._zoom_through(ctx, sid, t, 1.4 - 0.4 * ease_out(k), 0.5 + 0.5 * k)
@@ -1150,10 +1268,17 @@ class Renderer:
             self.draw_world(ctx, sid, t)
             ctx.restore()
         self.ambience(ctx, t)
+        # chớp trắng 4 khung ngay sau câu hook (cảnh 1 → cảnh 2)
+        if self.f.film.get("hook_flash", True) and len(self.f.scene_spans) > 1:
+            n = int((t - self.f.scene_spans[1][0]) * FPS + 1e-6)
+            if 0 <= n < HOOK_FLASH_FRAMES:
+                ctx.set_source_rgba(1, 1, 1, (0.85, 0.6, 0.35, 0.15)[n])
+                ctx.paint()
         self.captions(ctx, t)
-        edge = min(t, self.f.total - t)
-        if edge < 0.35:
-            ctx.set_source_rgba(0, 0, 0, 1 - edge / 0.35)
+        # vào thẳng câu hook từ khung đầu (không mờ dần từ đen); video dọc kết thúc ngay ở chữ cuối để lặp
+        edge = self.f.total - t
+        if self.W > self.H and edge < 0.25:
+            ctx.set_source_rgba(0, 0, 0, 1 - edge / 0.25)
             ctx.paint()
 
     def _blurred(self, ctx, sid, t, offset, amount):
@@ -1184,31 +1309,98 @@ def sfx_events(film: Film):
         kind = SFX_FOR.get(e.get("do"))
         if e.get("do") == "enter":
             kind = {"drop": "thud", "slide_left": "whoosh", "slide_right": "whoosh"}.get(e.get("anim"), "pop")
-        if e.get("do") == "camera":
+        if e.get("do") == "camera" or (e.get("do") == "stage" and e.get("transition", "fade") in ("fade", "cut")):
             continue
         if kind and e.get("sfx", True) is not False:
             ev.append((t, e.get("sfx") if isinstance(e.get("sfx"), str) else kind,
                        0.55 if kind == "whoosh" else 0.8))
     for t, oid, icon in film.reactions:
         ev.append((t, "pop", 0.6))
-    for t in film.punches:
+    for t in film.emph_starts:
         ev.append((t, "tick", 0.45))
+    if film.film.get("hook_flash", True) and len(film.scene_spans) > 1:
+        ev.append((film.scene_spans[1][0], "whoosh", 0.45))
+    # câu kết thúc kiểu riser → impact → sparkle: tiếng dâng lên dẫn vào cú "burst" cuối cùng
+    bursts = [t for t, si, e in film.events if e.get("do") == "burst"]
+    if bursts and bursts[-1] > 1.0:
+        ev.append((bursts[-1] - 0.8, "riser", 0.5))
     # whoosh cho những cú lướt camera lớn
     prev = None
-    for (t, x, y, z, d) in film.cameras:
+    for (t, x, y, z, d, _r, crash) in film.cameras:
+        if crash:  # gió lao vào + tiếng đập khi tới nơi
+            ev.append((t, "whoosh", 0.6))
+            ev.append((t + CRASH_FRAMES / FPS, "thud", 0.75))
+            prev = (x, y, z)
+            continue
         if prev and (abs(x - prev[0]) + abs(y - prev[1]) > 0.25 or abs(z - prev[2]) > 0.5):
             ev.append((t, "whoosh", 0.5))
         prev = (x, y, z)
     return ev
 
 
+LOUD_I, LOUD_TP, LOUD_LRA = -14.0, -2.0, 9.0  # chuẩn YouTube: -14 LUFS, đỉnh ≤ -2 dBTP (chừa chỗ cho AAC)
+
+
+def mix_audio(voice_wav, sfx_wav, music, out_wav):
+    """Trộn giọng + SFX + nhạc (nhạc tự nhỏ lại khi có lời), rồi chuẩn hoá loudness 2 lượt về -14 LUFS."""
+    import json as _json
+    import re as _re
+    inputs = ["-i", str(Path(voice_wav).resolve()), "-i", str(Path(sfx_wav).resolve())]
+    mix = "[0:a]volume=1.0[v];[1:a]volume=0.9[s];[v][s]amix=inputs=2:duration=first:normalize=0"
+    if music:
+        inputs += ["-stream_loop", "-1", "-i", str(Path(music).resolve())]
+        # nhạc nền nằm dưới giọng ~6–10 dB khi có lời (sidechain ducking)
+        mix = ("[0:a]volume=1.0,asplit=2[v][vk];[1:a]volume=0.9[s];[2:a]volume=0.42[m0];"
+               "[m0][vk]sidechaincompress=threshold=0.02:ratio=6:attack=15:release=350[m];"
+               "[v][s][m]amix=inputs=3:duration=first:normalize=0")
+    raw = Path(out_wav).with_name("mix_raw.wav")
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", *inputs, "-filter_complex", mix + "[a]",
+                    "-map", "[a]", "-ac", "2", "-ar", "48000", str(raw)], check=True)
+    ln = f"loudnorm=I={LOUD_I}:TP={LOUD_TP}:LRA={LOUD_LRA}"
+    try:
+        e = subprocess.run(["ffmpeg", "-hide_banner", "-i", str(raw), "-af", ln + ":print_format=json",
+                            "-f", "null", "-"], capture_output=True, text=True).stderr
+        m = _json.loads(_re.findall(r"\{[^{}]*\}", e)[-1])
+        ln += (f":measured_I={m['input_i']}:measured_TP={m['input_tp']}:measured_LRA={m['input_lra']}"
+               f":measured_thresh={m['input_thresh']}:offset={m['target_offset']}:linear=true")
+    except Exception as ex:  # đo lỗi thì chuẩn hoá 1 lượt
+        print(f"[audio] loudnorm 1 lượt ({ex})")
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(raw), "-af", ln, "-ar", "48000",
+                    str(out_wav)], check=True)
+    return out_wav
+
+
+def planned_frames(film: Film):
+    """Những khung cố ý thay đổi đột ngột (chuyển cảnh, chớp trắng, rung) để bước QA bỏ qua."""
+    out = []
+    for tc, _sid, _tr in film.stage_changes:
+        f = int(tc * FPS)
+        out.append([f - 2, f + 12])
+    if len(film.scene_spans) > 1:
+        f = int(film.scene_spans[1][0] * FPS)
+        out.append([f - 1, f + HOOK_FLASH_FRAMES + 1])
+    for ts, _s in film.shakes:
+        f = int(ts * FPS)
+        out.append([f - 1, f + SHAKE_FRAMES + 1])
+    for tp in film.punches:
+        f = int(tp * FPS)
+        out.append([f - 1, f + 4])
+    for c in film.cameras:
+        if c[6]:  # crash zoom
+            f = int(c[0] * FPS)
+            out.append([f - 1, f + CRASH_FRAMES + 6])
+    return out
+
+
 def render(film_json, timings, assets, voice_wav, out_mp4, music=None, cwd=None, preview_dir=None,
-           preview_only=False):
+           preview_only=False, qa_dir=None):
     """Dựng video (hoặc chỉ ảnh xem trước mỗi cảnh nếu preview_only)."""
     from scene_video import mouth_envelope
     import sfx
 
     global CAPTION_FONT
+    global LIPSYNC
+    LIPSYNC = bool(film_json.get("lipsync", False))
     film = Film(film_json, timings, assets)
     W, H = SV.W, SV.H
     fams = subprocess.run(["fc-list", ":", "family"], capture_output=True, text=True).stdout
@@ -1243,20 +1435,17 @@ def render(film_json, timings, assets, voice_wav, out_mp4, music=None, cwd=None,
     if not music and film_json.get("music", "upbeat") != "none":
         import music as MUSIC
         music = work / "music.wav"
-        MUSIC.build(film.total, music, film_json.get("music", "upbeat"))
-    inputs = ["-i", str(Path(voice_wav).resolve()), "-i", str(sfx_wav.resolve())]
-    mix = "[1:a]volume=1.0[v];[2:a]volume=0.9[s];[v][s]amix=inputs=2:duration=first:normalize=0"
-    if music:
-        inputs += ["-stream_loop", "-1", "-i", str(Path(music).resolve())]
-        # nhạc nền tự nhỏ lại khi có lời (sidechain ducking)
-        mix = ("[1:a]volume=1.0,asplit=2[v][vk];[2:a]volume=0.9[s];[3:a]volume=0.42[m0];"
-               "[m0][vk]sidechaincompress=threshold=0.02:ratio=6:attack=15:release=350[m];"
-               "[v][s][m]amix=inputs=3:duration=first:normalize=0")
+        # nhịp nhạc tự tạo: đặt phách mạnh đầu ô nhịp đúng lúc chớp trắng sau hook
+        down = film.scene_spans[1][0] if len(film.scene_spans) > 1 else 0.0
+        MUSIC.build(film.total, music, film_json.get("music", "upbeat"), downbeat_at=down)
+    mix_wav = mix_audio(voice_wav, sfx_wav, music, work / "mix.wav")
+    # màu tươi hơn một chút (video mẫu: độ bão hoà 0,38–0,65, không bị đen bệt)
+    vf = "eq=saturation=1.08:contrast=1.03"
     cmd = ["ffmpeg", "-y", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "bgra",
-           "-s", f"{W}x{H}", "-r", str(FPS), "-i", "-", *inputs,
-           "-filter_complex", f"[0:v]{vf}[vo];{mix}[a]", "-map", "[vo]", "-map", "[a]",
+           "-s", f"{W}x{H}", "-r", str(FPS), "-i", "-", "-i", str(Path(mix_wav).resolve()),
+           "-filter_complex", f"[0:v]{vf}[vo]", "-map", "[vo]", "-map", "1:a",
            "-c:v", "libx264", "-preset", "medium", "-crf", "19", "-pix_fmt", "yuv420p",
-           "-c:a", "aac", "-b:a", "192k", "-shortest", "-movflags", "+faststart",
+           "-c:a", "aac", "-b:a", "256k", "-shortest", "-movflags", "+faststart",
            str(Path(out_mp4).resolve())]
     proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, cwd=cwd)
     prev = None
@@ -1304,4 +1493,14 @@ def render(film_json, timings, assets, voice_wav, out_mp4, music=None, cwd=None,
     proc.stdin.close()
     if proc.wait() != 0:
         raise SystemExit("ffmpeg lỗi khi dựng video")
+    if qa_dir:  # kiểm tra từng khung + loudness; lỗi QA không làm hỏng video
+        try:
+            import qa
+            # phụ đề đổi cụm chữ là thay đổi cố ý (giống video mẫu), không tính là "giật"
+            caps = [[int(g[0] * FPS) - 1, int(g[0] * FPS) + 1] for g in r._groups()] + \
+                   [[int(g[1] * FPS) - 1, int(g[1] * FPS) + 1] for g in r._groups()]
+            lines, warn = qa.check(out_mp4, qa_dir, planned_frames(film) + caps)
+            print("[qa] " + "\n[qa] ".join(lines))
+        except Exception as e:
+            print(f"[qa] bỏ qua: {e}")
     return out_mp4

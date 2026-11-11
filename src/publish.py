@@ -50,7 +50,8 @@ def _cutout_with_face(path: Path, expr: str) -> Image.Image:
     ctx = cairo.Context(surf)
     talk = 1.0 if motion._mood(expr) in ("o", "grin") else 0.0
     word = "ô" if motion._mood(expr) == "o" else "a"
-    motion.draw_face(ctx, fc, surf.get_width(), surf.get_height(), 10.0, 0.0, talk, word, expr)
+    motion.draw_face(ctx, fc, surf.get_width(), surf.get_height(), 10.0, 0.0, talk, word, expr,
+                     allow_blink=False)
     surf.flush()
     out = Image.frombuffer("RGBA", (surf.get_width(), surf.get_height()), bytes(surf.get_data()),
                            "raw", "BGRA", 0, 1).copy()

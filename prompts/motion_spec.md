@@ -51,7 +51,9 @@ strongest emotion, an optional prop that tells the story at a glance, and the st
   of the STAGE height (main character 0.22–0.38, small prop 0.05–0.1, big prop 0.1–0.18).
   On screen it gets bigger when the camera zooms in.
 - Camera: `x,y` = point to look at (0–1 on stage), `zoom` 0.7 (wide, whole stage) … 2.2 (close-up).
-  Camera moves are eased automatically; optional `"dur"` seconds.
+  Camera moves are eased automatically (smooth in AND out, 0.6–1.4 s; long moves take longer). Between
+  moves the camera keeps slowly pushing in by itself, so never add tiny "drift" camera events.
+  Close-ups (zoom ≥ 1.4) blur the stage background automatically (depth of field); wides stay sharp.
 
 ## Timing
 - `at` = index of the word in `narration.split()` (0-based) when the event starts. Decimals allowed (2.5).
@@ -61,7 +63,8 @@ strongest emotion, an optional prop that tells the story at a glance, and the st
 ## Events (`do`)
 | do | fields | use |
 |---|---|---|
-| camera | x, y, zoom, dur? | push in on the subject, pan to the next thing, pull out to reveal |
+| camera | x, y, zoom, dur?, roll? | push in on the subject, pan to the next thing, pull out to reveal; `roll` = dutch tilt in degrees (3–5, ±) for drama, falls, "uh-oh" beats |
+| camera + `"crash": true` | x, y, zoom (≈ 1.8–2.6) | CRASH ZOOM "look at THIS!": 6-frame slam onto the target, tiny overshoot, whoosh + thud. Max 2 per video, on the biggest reveal; hold ≥ 1.5 s after it |
 | enter | id, x, y, size, anim: pop/drop/slide_left/slide_right/rise/fade, flip?, expr? | bring a character/prop in |
 | move | id, to:[x,y], dur?, path: line/arc, height?, flip? | walk, fly, throw, hand over |
 | exit | id, anim: pop/fade/slide_left/slide_right/fall | remove |
@@ -85,17 +88,24 @@ Overlays (label/arrow/line/highlight/burst/flow) disappear after `hold` seconds 
 Changing `stage` between scenes clears all characters/props, so re-`enter` them in the new stage.
 Stage `transition`: whip (fast blurred pan, default), zoom (zoom through), cut.
 
-## Storytelling rules (this is what keeps people watching)
-A. Sentence 1 is the hook, ≤ 10 words: a surprising fact, a bold claim, or a question the viewer can't
-   answer. Never greet, never say "in this video", never start with the topic name alone.
-B. Open a loop in the first 5 seconds and close it near the end ("…but reason #3 is the weirdest",
-   "and the answer surprised scientists").
-C. Every 8–10 seconds give a mini-reveal, a twist, a number, or a question to the viewer.
-   Short spoken sentences (≤ 12 words), conversational, "you"-focused, concrete comparisons
-   ("as heavy as 3 elephants") instead of abstract words.
-D. Emotion: the character reacts (expression change) at least every ~6 seconds.
-E. Ending: a punchy payoff, then ≤ 6 words of call to action. For Shorts, write the last line so it
-   flows back into the first line (seamless loop).
+## Storytelling rules (measured on 20 viral animated Shorts — every one follows this formula)
+A. HOOK = sentence 1, 10–16 words, a paradox stated as plain fact, no setup: someone did something that
+   sounds dumb or impossible, with stakes ("Seventy-four soldiers knocked down an iron bridge just by walking
+   across it."), or "If you X, you'd Y", or "X is illegal, yet …". Never greet, never "in this video",
+   never start with the topic name alone. Voice starts on the very first frame.
+B. SETTING in 1–2 lines: present tense, concrete details (year, place, time of day, a named everyman, numbers).
+C. ESCALATION in 3–6 beats, each a little bigger: people doubt / laugh / mock (short in-character dialogue
+   lines like `"This is fine," says Tom.`), stakes climb. 1–2 exaggeration jokes built on REAL facts
+   (claim vs reality). Never describe what the viewer already sees on screen.
+D. MYSTERY beat: one question to the viewer, e.g. "Wait, how?" or "So why did it work?".
+E. PIVOT with "You see," → the real mechanism, explained with ONE everyday analogy
+   ("Ever pushed a kid on a swing? …", "Picture your body as …").
+F. PAYOFF: an ironic twist or callback in the last 1–2 short sentences. Shorts (9:16) END ON THE LAST
+   WORD: no "like and subscribe", no outro. Write the last line so it can flow back into the first line
+   (seamless loop). Horizontal long videos may end with ≤ 6 words of call to action.
+G. Style: plain spoken English with contractions, sentences ~13 words, fast and steady
+   (~3.7 words per second, almost no pauses), "you"-focused or story mode with a named everyman.
+H. The character reacts (expression change / action) at least every ~6 seconds.
 
 ## Direction rules (this is what makes the video look professional)
 1. HOOK: scene 1 starts close (zoom ≥ 1.4) on something surprising; first event at word 0.
@@ -112,14 +122,20 @@ E. Ending: a punchy payoff, then ≤ 6 words of call to action. For Shorts, writ
 8. Characters stand on the ground (y ≈ 0.8–0.9 of stage) unless flying; keep them away from the bottom
    ~15% of the SCREEN where captions are.
 9. Vertical 9:16: compose in the middle column (x 0.3–0.7), use close camera (zoom 1.2–1.8).
-10. Faces: the engine draws an animated mouth (lip-sync to the voice) and eye blinks on every cast
-    member. So cast and expression prompts must show the character FRONT-facing with a clear face and a
-    SMALL CLOSED mouth; express emotion with eyes, eyebrows, pose and hands (not with an open mouth).
-    The expression key names the mood of the drawn mouth: shock/surprised → "O" mouth, sad/angry/worried
-    → frown, happy/laugh/excited → big smile, thinking/confused → flat. Face positions per image (filled
-    after the images exist, by looking at review/faces/*.jpg): `"faces": {"base": {"mouth_box": [x0,y0,x1,y1],
-    "eyes": [[x,y,r],[x,y,r]], "mouth_open": false}, "<expr>": {...}}` inside a cast entry (0–1 of the image;
-    optional "skin": "#hex"). Use `{"face": false}` for an image whose face is not front-facing or too small.
+10. Faces: the engine does NOT animate mouths (lip-sync is off: it looked broken), it only adds eye blinks.
+    So draw each expression completely in the image prompt (open mouth for shock/laugh is fine), front-
+    facing with a clear face. Eye positions per image (for blinks, filled after the images exist, by looking
+    at review/faces/*.jpg): `"faces": {"base": {"eyes": [[x,y,r],[x,y,r]]}, "<expr>": {...}}` inside a cast
+    entry (0–1 of the image; optional "skin": "#hex"). Use `{"face": false}` when the face is not
+    front-facing, too small, or the eyes are closed/hidden.
 11. Prompts: cast/props prompts describe ONE subject only, no background; stage prompts describe a place
     with NO people and NO text. All in English. Everything shares `art_style`.
-12. Ending: payoff + call to like/subscribe with a final `burst` or character `wave`-like action (bounce/jump).
+12. Ending: land the payoff visually (expression change, `burst`, `shake`) on the last words; no outro scene.
+14. Less is more (rules from video-shotcraft): each animation trick is the STAR only once per video;
+    whole-screen hits (crash zoom, shake, flash) ≤ 3 per video — the engine already limits the automatic
+    emphasis punch-ins to 3. After a key number/label lands, let it BREATHE ≥ 1 s before the next big move.
+    Groups of things entering speed up (each faster than the last), then hold 0.5 s.
+    `highlight` is drawn as a quick hand-drawn marker circle — use it on the single thing that matters.
+13. Place changes: default stage `transition` is a quick dissolve ("fade"). Use "whip" at most once per
+    minute for an energetic jump, "cut" for a deliberate shock. A white flash plays automatically after
+    the hook sentence (scene 1 → scene 2), so make scene 1 exactly the hook sentence.

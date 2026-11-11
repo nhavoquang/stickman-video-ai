@@ -40,7 +40,9 @@ In ra số cảnh, số giây và số từ mỗi cảnh.
 - `art_style` hợp chủ đề (ví dụ trẻ em: chibi pastel; công nghệ: flat vector neon; lịch sử: tranh minh hoạ cổ điển).
 
 ## Bước 3. Tự chấm và sửa (2 vòng)
-Chấm thang 10: hook 3 giây đầu (câu 1 ≤ 10 từ, gây sốc/tò mò), vòng lặp tò mò được mở rồi đóng, mỗi 8–10 giây có điều bất ngờ, độ chính xác, giá trị/độ hay, nhịp kể, độ "sống" của hình (mật độ sự kiện,
+Chấm thang 10: hook (câu 1 là nghịch lý nói như sự thật, 10–16 từ, cảnh 1 chỉ gồm câu hook), đủ công thức
+"Storytelling rules" trong motion_spec (bối cảnh → leo thang 3–6 nhịp có thoại → câu hỏi bí ẩn → "You see," + ví dụ
+đời thường → twist cuối; Shorts không có lời kêu gọi like/sub), mỗi 8–10 giây có điều bất ngờ, độ chính xác, giá trị/độ hay, nhịp kể, độ "sống" của hình (mật độ sự kiện,
 camera, biểu cảm), độ rõ ràng (hình minh hoạ đúng ý nói), ngôn ngữ tự nhiên. Ghi điểm + lý do vào
 `output/review_notes.md`, sửa `script.json`. Lặp đến khi mọi tiêu chí ≥ 8 hoặc đã 2 vòng.
 
@@ -51,23 +53,19 @@ python src/main.py --script-file output/script.json --stage assets --language <l
 Rồi dùng công cụ Read để XEM: `output/review/assets_*.jpg` (mọi nhân vật/đạo cụ/sân khấu) và
 `output/review/scenes_*.jpg` (2 khung mỗi cảnh, đánh số), đọc `output/review/report.json`.
 
-## Bước 4b. Xác định mắt + miệng cho từng nhân vật (Claude làm, Gemini chỉ dự phòng)
-Engine vẽ miệng nhép và chớp mắt lên ảnh nhân vật, nên cần vị trí CHÍNH XÁC. Dùng Read xem từng ảnh
-`output/review/faces/<cast_id>__<base|biểu cảm>.jpg`: ảnh nhân vật trên lưới toạ độ 0..1 (số ở mép trên = x,
-mép trái = y), khung đỏ = miệng máy tự đoán, vòng xanh = mắt. Với MỖI ảnh, ghi vào `script.json`:
+## Bước 4b. Vị trí mắt cho từng nhân vật (để chớp mắt)
+Engine KHÔNG nhép miệng nữa (đã tắt vì hay lỗi), chỉ vẽ chớp mắt, nên chỉ cần vị trí mắt. Dùng Read xem từng ảnh
+`output/review/faces/<cast_id>__<base|biểu cảm>.jpg` (lưới toạ độ 0..1: số ở mép trên = x, mép trái = y; vòng xanh
+= mắt máy tự đoán). Với MỖI ảnh, ghi vào `script.json`:
 ```
 "cast": [{"id": "kid", ..., "faces": {
-   "base":  {"mouth_box": [x0, y0, x1, y1], "eyes": [[x, y, r], [x, y, r]], "mouth_open": false},
-   "happy": {"mouth_box": [...], "eyes": [...], "mouth_open": true},
+   "base":  {"eyes": [[x, y, r], [x, y, r]]},
    "sad":   {"face": false}}}]
 ```
-- `mouth_box`: khung bao sát cái miệng đang vẽ trong ảnh (toạ độ ảnh 0..1). Không có miệng thì khung nhỏ ở
-  chỗ miệng nên nằm (khoảng 1/3 từ cằm lên, giữa hai mắt). `eyes`: tâm mỗi mắt + bán kính r (theo chiều ngang).
-- `mouth_open: true` khi miệng gốc há to có răng/lưỡi (engine giữ nguyên, không vẽ đè).
-- `{"face": false}` khi mặt nghiêng/quay lưng/quá nhỏ/không phải sinh vật có mặt → không nhép.
-Chạy lại lệnh Bước 4 (không tạo lại ảnh, chỉ dựng lại xem trước) rồi xem lại `review/faces/*.jpg`: nguồn phải là
-"claude", khung đỏ phải ôm đúng miệng, vòng xanh đúng mắt; trong `scenes_*.jpg` không có hai miệng.
-Lệch thì chỉnh số và chạy lại (tối đa 2 lần).
+- `eyes`: tâm mỗi mắt + bán kính r (theo chiều ngang ảnh).
+- `{"face": false}` khi mặt nghiêng/quay lưng/quá nhỏ/mắt đang nhắm/không phải sinh vật có mắt → không chớp.
+Chạy lại lệnh Bước 4 (không tạo lại ảnh) rồi xem lại `review/faces/*.jpg`: vòng xanh phải nằm đúng mắt. Lệch thì
+chỉnh số và chạy lại (tối đa 2 lần).
 
 ## Bước 5. Sửa lỗi hình (tối đa 2 vòng)
 - Nhân vật/đạo cụ: sai phong cách, còn nền/khung, có chữ, bị cắt cụt, nhiều vật thể, biểu cảm không khác
@@ -75,9 +73,8 @@ Lệch thì chỉnh số và chạy lại (tối đa 2 lần).
 - Sân khấu: có người, có chữ, quá rối, quá tối, không hợp nội dung → viết lại prompt.
 - Bố cục: nhân vật/nhãn/mũi tên nằm ngoài khung hình, chồng lên nhau, quá to/quá nhỏ, che phụ đề
   → sửa x, y, size, camera.
-- Khẩu hình: engine tự vẽ miệng nhép theo giọng và chớp mắt. Trong `scenes_*.jpg` kiểm tra miệng nằm đúng
-  chỗ trên mặt, không bị hai miệng. Sai thì sửa `faces` của nhân vật đó (Bước 4b), hoặc
-  viết lại prompt cho mặt nhìn thẳng, miệng nhỏ khép.
+- Mắt: trong `scenes_*.jpg` không có vệt màu da lạ trên mặt (mí mắt vẽ sai chỗ). Sai thì sửa `faces` (Bước 4b)
+  hoặc đặt `{"face": false}` cho ảnh đó.
 - `events_per_second` < 0.7 → thêm sự kiện. Tổng thời lượng lệch > 20% so với yêu cầu → sửa lời dẫn.
 Sửa `script.json` rồi chạy lại lệnh Bước 4 (chỉ phần đổi mới được tạo lại). Ghi những gì đã sửa vào
 `output/review_notes.md`.

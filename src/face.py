@@ -277,6 +277,12 @@ def from_override(ov: dict, path: Path) -> dict:
         info["mouth"] = [float(v) for v in ov["mouth"]][:2]
         info["mouth_width"] = float(ov.get("mouth_width", 0.12))
         info["mouth_h"] = float(ov.get("mouth_h", 0))
+    elif len(info["eyes"]) == 2:  # chỉ có mắt (nhép miệng đã tắt): ước lượng chỗ miệng dưới hai mắt
+        (x1, y1, r1), (x2, y2, r2) = [[float(v) for v in e[:3]] for e in info["eyes"]]
+        d = max(0.02, abs(x2 - x1))
+        info["mouth"] = [(x1 + x2) / 2, (y1 + y2) / 2 + d * 0.9]
+        info["mouth_width"] = d * 0.5
+        info["mouth_h"] = 0
     else:
         return {"face": False, "source": "claude"}
     im = Image.open(path).convert("RGBA")

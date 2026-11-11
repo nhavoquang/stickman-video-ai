@@ -164,7 +164,8 @@ def run_motion(a, n_scenes, size, vertical, font, font_path):
     name = slugify(film["title"]) + ("-shorts" if vertical else "")
     video = out / f"{name}.mp4"
     motion.render(film, timings, assets, work / "voice.wav", video,
-                  music=random.choice(music).resolve() if music else None, cwd=work)
+                  music=random.choice(music).resolve() if music else None, cwd=work,
+                  qa_dir=out / "review" / "qa")
     thumb_src = frames[1] if len(frames) > 1 else frames[0]
     thumb = out / f"{name}_thumbnail.jpg"
     try:
