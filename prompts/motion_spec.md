@@ -122,12 +122,9 @@ H. The character reacts (expression change / action) at least every ~6 seconds.
 8. Characters stand on the ground (y ≈ 0.8–0.9 of stage) unless flying; keep them away from the bottom
    ~15% of the SCREEN where captions are.
 9. Vertical 9:16: compose in the middle column (x 0.3–0.7), use close camera (zoom 1.2–1.8).
-10. Faces: the engine does NOT animate mouths (lip-sync is off: it looked broken), it only adds eye blinks.
-    So draw each expression completely in the image prompt (open mouth for shock/laugh is fine), front-
-    facing with a clear face. Eye positions per image (for blinks, filled after the images exist, by looking
-    at review/faces/*.jpg): `"faces": {"base": {"eyes": [[x,y,r],[x,y,r]]}, "<expr>": {...}}` inside a cast
-    entry (0–1 of the image; optional "skin": "#hex"). Use `{"face": false}` when the face is not
-    front-facing, too small, or the eyes are closed/hidden.
+10. Faces: the engine draws NOTHING on faces (lip-sync and blinks are off: they looked broken), so each
+    image must already show the full expression (open mouth for shock/laugh is fine). Front-facing, simple,
+    clean eyes. Do not add a `faces` field.
 11. Prompts: cast/props prompts describe ONE subject only, no background; stage prompts describe a place
     with NO people and NO text. All in English. Everything shares `art_style`.
 12. Ending: land the payoff visually (expression change, `burst`, `shake`) on the last words; no outro scene.

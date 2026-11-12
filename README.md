@@ -43,6 +43,7 @@ Workflow chỉ chạy khi bạn bấm **Run workflow** (commit không tự chạ
 | Nhân vật | `doodle` nét đen, `shirt` áo xanh |
 | Tốc độ đọc | ví dụ `-10%`, `+0%`, `+15%` |
 | Phụ đề | bật / tắt |
+| Mô tả nội dung | Ý chính, câu chuyện/nhân vật, ý bắt buộc, cái kết, điều cần tránh (kịch bản bám sát phần này) |
 | Yêu cầu thêm | ví dụ "hài hước", "cho trẻ em", "nhiều số liệu" |
 
 3. Chạy xong, mở lần chạy đó, tải **video** ở mục Artifacts (gồm file MP4, thumbnail và file JSON chứa tiêu đề, mô tả, tag). Video dọc có thêm `#Shorts` trong mô tả.
@@ -67,7 +68,7 @@ Dựng như video motion graphics chuyên nghiệp, áp dụng cho mọi chủ �
 - Thêm từ github.com/Vincentwei1021/video-shotcraft: crash zoom (`"crash": true`), giới hạn ≤3 cú tác động cả khung
   hình, vòng bút dạ vẽ tay, tiếng riser trước cú burst cuối, SFX lặp liền nhau xen 2 bản + nhỏ dần, phụ đề dọc
   cao ≥5 % khung hình, nhạc tự tạo đặt phách mạnh đúng lúc chớp trắng sau hook.
-- Nhép miệng đã TẮT mặc định (hay lỗi); bật lại bằng `"lipsync": true` trong script.json.
+- Nhép miệng và chớp mắt đã TẮT mặc định (hay lệch); bật lại bằng `"lipsync": true` / `"blink": true` trong script.json.
 - Sau khi dựng, `src/qa.py` kiểm tra từng khung (đen/trắng/đứng hình/giật) và loudness; báo cáo nằm ở trang
   tóm tắt của lần chạy và trong artifact **review** (`review/qa/`).
 Định dạng kịch bản: `prompts/motion_spec.md`, ví dụ `examples/sample_motion.json`.

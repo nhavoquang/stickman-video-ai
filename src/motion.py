@@ -65,6 +65,9 @@ CRASH_FRAMES = 6        # cú zoom "dí sát" (crash zoom): 6 khung tăng tốc,
 # Nhép miệng hay lỗi (miệng lệch, hai miệng) nên TẮT mặc định: giữ nguyên miệng gốc của ảnh, chỉ chớp mắt.
 # Bật lại cho từng video bằng "lipsync": true trong script.json.
 LIPSYNC = False
+# Chớp mắt vẽ đè lên ảnh AI cũng hay lệch chỗ (mí mắt màu da lạ) nên cũng TẮT mặc định: giữ nguyên ảnh gốc.
+# Bật lại bằng "blink": true trong script.json.
+BLINK = False
 
 
 def ease_out(t):
@@ -623,7 +626,7 @@ def draw_face(ctx, fc, iw, ih, t, seed, talk, word, expr, expr_t=-9.0, allow_bli
     mood = _mood(expr)
     # --- chớp mắt
     eyes = fc.get("eyes") or []
-    blink = blink_level(t, seed, expr_t) if allow_blink else 0.0
+    blink = blink_level(t, seed, expr_t) if (allow_blink and BLINK) else 0.0
     if blink > 0.05 and len(eyes) == 2:
         for ex, ey, er in eyes:
             ex, ey, er = ex * iw, ey * ih, max(3.0, er * iw)
@@ -887,7 +890,7 @@ class Renderer:
             return
         if not all(map(math.isfinite, (x, y, sx, sy, s, st["rot"], lean))):
             return
-        fc = self._face(o["id"], key)
+        fc = self._face(o["id"], key) if (LIPSYNC or BLINK) else None
         mood = (st["expr"] or "").lower()
         self._paint_obj(ctx, surf, iw, ih, s, sx, sy, x, y, st, t, seed, lean, fc, talk, word, mood)
         hh = h_px * sy
@@ -1399,8 +1402,9 @@ def render(film_json, timings, assets, voice_wav, out_mp4, music=None, cwd=None,
     import sfx
 
     global CAPTION_FONT
-    global LIPSYNC
+    global LIPSYNC, BLINK
     LIPSYNC = bool(film_json.get("lipsync", False))
+    BLINK = bool(film_json.get("blink", False))
     film = Film(film_json, timings, assets)
     W, H = SV.W, SV.H
     fams = subprocess.run(["fc-list", ":", "family"], capture_output=True, text=True).stdout

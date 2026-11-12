@@ -3,7 +3,9 @@
 Bạn điều phối toàn bộ quá trình tạo MỘT video chất lượng cao để kiếm tiền trên YouTube, theo kiểu
 dựng chuyển động chuyên nghiệp (sân khấu liền mạch, camera lướt, nhân vật/đạo cụ cắt nền chuyển động
 khớp từng từ). Yêu cầu nằm trong `output/request.json` (topic, language, aspect, duration, voice, style,
-rate, subtitles, notes). Bạn KHÔNG commit, KHÔNG push, KHÔNG sửa code trong `src/`. Chỉ làm trong `output/`.
+rate, subtitles, notes, brief). **`brief` là mô tả nội dung của người dùng: nếu có, kịch bản phải bám sát nó**
+(ý chính, câu chuyện/nhân vật, các ý bắt buộc, cái kết, điều cần tránh); chỉ tự sáng tạo phần brief không nói tới,
+và vẫn giữ đúng sự thật. Bạn KHÔNG commit, KHÔNG push, KHÔNG sửa code trong `src/`. Chỉ làm trong `output/`.
 
 Đọc kỹ `prompts/motion_spec.md` (định dạng kịch bản + quy tắc đạo diễn) và xem ví dụ
 `examples/sample_motion.json`. Các lệnh tạo ảnh/giọng có thể chạy nhiều phút: hãy chờ, đừng huỷ.
@@ -53,7 +55,9 @@ python src/main.py --script-file output/script.json --stage assets --language <l
 Rồi dùng công cụ Read để XEM: `output/review/assets_*.jpg` (mọi nhân vật/đạo cụ/sân khấu) và
 `output/review/scenes_*.jpg` (2 khung mỗi cảnh, đánh số), đọc `output/review/report.json`.
 
-## Bước 4b. Vị trí mắt cho từng nhân vật (để chớp mắt)
+## Bước 4b. Vị trí mắt (BỎ QUA bước này)
+Mặc định engine không vẽ gì lên mặt nhân vật (nhép miệng và chớp mắt đều tắt vì hay lệch), nên KHÔNG cần ghi
+`faces`. Chỉ làm phần dưới đây nếu script.json đặt `"blink": true`.
 Engine KHÔNG nhép miệng nữa (đã tắt vì hay lỗi), chỉ vẽ chớp mắt, nên chỉ cần vị trí mắt. Dùng Read xem từng ảnh
 `output/review/faces/<cast_id>__<base|biểu cảm>.jpg` (lưới toạ độ 0..1: số ở mép trên = x, mép trái = y; vòng xanh
 = mắt máy tự đoán). Với MỖI ảnh, ghi vào `script.json`:
@@ -73,8 +77,8 @@ chỉnh số và chạy lại (tối đa 2 lần).
 - Sân khấu: có người, có chữ, quá rối, quá tối, không hợp nội dung → viết lại prompt.
 - Bố cục: nhân vật/nhãn/mũi tên nằm ngoài khung hình, chồng lên nhau, quá to/quá nhỏ, che phụ đề
   → sửa x, y, size, camera.
-- Mắt: trong `scenes_*.jpg` không có vệt màu da lạ trên mặt (mí mắt vẽ sai chỗ). Sai thì sửa `faces` (Bước 4b)
-  hoặc đặt `{"face": false}` cho ảnh đó.
+- Mặt nhân vật: engine giữ nguyên ảnh gốc, nên biểu cảm phải nằm sẵn trong ảnh. Mặt méo, mắt lệch, thiếu mắt
+  → viết lại prompt của ảnh đó (mặt nhìn thẳng, mắt rõ ràng, đơn giản).
 - `events_per_second` < 0.7 → thêm sự kiện. Tổng thời lượng lệch > 20% so với yêu cầu → sửa lời dẫn.
 Sửa `script.json` rồi chạy lại lệnh Bước 4 (chỉ phần đổi mới được tạo lại). Ghi những gì đã sửa vào
 `output/review_notes.md`.

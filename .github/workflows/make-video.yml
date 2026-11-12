@@ -46,6 +46,10 @@ on:
         type: choice
         options: ["on", "off"]
         default: "on"
+      brief:
+        description: "Mô tả nội dung (tuỳ chọn, viết dài thoải mái): ý chính muốn nói, câu chuyện/nhân vật, các ý bắt buộc phải có, cái kết, điều cần tránh"
+        required: false
+        default: ""
       notes:
         description: "Yêu cầu thêm cho kịch bản (vd: hài hước, cho trẻ em, có số liệu) - có thể bỏ trống"
         required: false
@@ -73,6 +77,7 @@ jobs:
       RATE: ${{ inputs.rate || '+5%' }}
       SUBTITLES: ${{ inputs.subtitles || 'on' }}
       NOTES: ${{ inputs.notes || '' }}
+      BRIEF: ${{ inputs.brief || '' }}
       STYLE_REF: ${{ inputs.style_ref || '' }}
       POLLINATIONS_TOKEN: ${{ secrets.POLLINATIONS_TOKEN }}
     steps:
@@ -90,7 +95,7 @@ jobs:
           mkdir -p output
           python - <<'PY'
           import json, os, random
-          keys = ["topic", "language", "aspect", "duration", "voice", "style", "rate", "subtitles", "notes", "style_ref"]
+          keys = ["topic", "language", "aspect", "duration", "voice", "style", "rate", "subtitles", "notes", "brief", "style_ref"]
           req = {k: os.environ["INPUT_TOPIC" if k == "topic" else k.upper()] for k in keys}
           if not req["topic"].strip():  # chạy do commit: lấy ngẫu nhiên 1 chủ đề trong topics.txt
               topics = [t.strip() for t in open("topics.txt", encoding="utf-8") if t.strip() and not t.startswith("#")]
@@ -131,10 +136,10 @@ jobs:
           if [ -f output/script.json ] && python -c "import json;json.load(open('output/script.json'))"; then
             echo "Dùng kịch bản Claude đã tối ưu"
             python src/main.py --script-file output/script.json "${COMMON[@]}" \
-              || python src/main.py --topic "$TOPIC" --notes="$NOTES" "${COMMON[@]}"
+              || python src/main.py --topic "$TOPIC" --notes="$NOTES" --brief="$BRIEF" "${COMMON[@]}"
           else
             echo "Không có kịch bản Claude, dùng Gemini"
-            python src/main.py --topic "$TOPIC" --notes="$NOTES" "${COMMON[@]}"
+            python src/main.py --topic "$TOPIC" --notes="$NOTES" --brief="$BRIEF" "${COMMON[@]}"
           fi
 
       - name: Báo cáo kiểm tra video (QA)

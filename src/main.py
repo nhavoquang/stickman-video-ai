@@ -192,13 +192,14 @@ def main():
     p.add_argument("--duration", type=int, default=60, help="Độ dài mong muốn (giây)")
     p.add_argument("--scenes", type=int, default=0, help="Số cảnh (0 = tự tính theo độ dài)")
     p.add_argument("--voice", default="nu", help="nu | nam | tên giọng Edge TTS")
-    p.add_argument("--rate", default="+5%", help="Tốc độ đọc, ví dụ +10%")
+    p.add_argument("--rate", default="+5%", help="Tốc độ đọc, ví dụ +10%%")
     p.add_argument("--style", default="motion",
                    help="motion (dựng chuyển động, mặc định) | doodle / shirt (người que cũ)")
     p.add_argument("--subtitles", default="on", choices=["on", "off"])
     p.add_argument("--style-ref", default="",
                    help="Ảnh mẫu phong cách: tên thư mục trong style_refs/, đường dẫn hoặc link ảnh")
     p.add_argument("--notes", default="", help="Yêu cầu thêm cho kịch bản, ví dụ: hài hước, cho trẻ em")
+    p.add_argument("--brief", default="", help="Mô tả nội dung chi tiết: ý chính, câu chuyện, ý bắt buộc, cái kết")
     p.add_argument("--model", default="auto", help="auto = tự chọn model Gemini mới nhất")
     p.add_argument("--script-file", help="Dùng kịch bản JSON có sẵn thay vì gọi Gemini")
     p.add_argument("--out", default="output")
@@ -209,6 +210,10 @@ def main():
     p.add_argument("--renderer", default=None, choices=["motion", "classic"],
                    help="motion = dựng chuyển động chuyên nghiệp (mặc định), classic = bản người que cũ")
     a = p.parse_args()
+    if a.brief.strip():  # mô tả nội dung của người dùng: ưu tiên cao nhất khi viết kịch bản
+        a.notes = ("CONTENT BRIEF from the user — follow it closely (main message, story, must-include points, "
+                   f"ending, things to avoid); keep facts true:\n{a.brief.strip()}"
+                   + (f"\nOther requests: {a.notes}" if a.notes.strip() else ""))
     if a.renderer is None:
         a.renderer = "classic" if a.style in ("doodle", "shirt") else "motion"
 
