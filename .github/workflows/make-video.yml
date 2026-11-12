@@ -83,17 +83,7 @@ jobs:
           cache: pip
       - name: Cài ffmpeg, cairo và font đa ngôn ngữ
         timeout-minutes: 20
-        run: |
-          sudo rm -f /var/lib/man-db/auto-update
-          APT="-o Acquire::Retries=3 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20"
-          PKGS="ffmpeg libcairo2-dev pkg-config python3-dev fonts-dejavu-core fonts-noto-core fonts-noto-cjk"
-          # mạng của máy chủ GitHub đôi khi chập chờn: mỗi lần thử tối đa 5 phút, thử lại 3 lần
-          for i in 1 2 3; do
-            sudo timeout 180 apt-get update -qq $APT || echo "apt update lỗi (lần $i), vẫn thử cài"
-            if sudo timeout 300 apt-get install -y -qq --no-install-recommends $APT $PKGS; then ok=1; break; fi
-            echo "Cài lỗi lần $i, thử lại sau 20 giây"; sleep 20
-          done
-          [ -n "$ok" ] || { echo "Không cài được gói hệ thống sau 3 lần"; exit 1; }
+        run: bash ci/install_deps.sh
       - run: pip install -r requirements.txt
       - name: Ghi yêu cầu
         run: |
