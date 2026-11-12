@@ -56,6 +56,7 @@ def smoother(t):
 # - mọi phản ứng hình xuất hiện sớm hơn chữ 0–3 khung.
 PUSH_RATE = 0.0015      # tốc độ đẩy vào lúc bắt đầu giữ cảnh (0,15 %/khung, mức êm của video mẫu)
 PUSH_MAX = 0.08         # tổng đẩy vào tối đa trong một lần giữ (+8 %)
+DRIFT_MAX = 0.018       # lúc giữ cảnh camera còn trôi ngang chậm theo hướng cú lướt trước (máy quay "sống", không rung)
 ZOOM_MAX = 1.7
 MAX_SHAKES = 2          # rung cả khung hình: tối đa 2 lần mỗi video, nhẹ
 CAM_MIN, CAM_MAX = 0.6, 1.4
@@ -285,9 +286,12 @@ class Film:
         x, y, z, r = cams[0][1], cams[0][2], cams[0][3], cams[0][5]
         hold_from = cams[0][0]
         overshoot = None
-        for (tc, cx, cy, cz, d, cr, crash) in cams[1:]:
-            # trạng thái thật lúc bắt đầu cú lướt (đã gồm phần đẩy vào) → không bị nhảy
+        dvx, dvy = 1.0, 0.0
+        for i, (tc, cx, cy, cz, d, cr, crash) in enumerate(cams[1:]):
+            # trạng thái thật lúc bắt đầu cú lướt (đã gồm phần đẩy vào + trôi) → không bị nhảy
             z0 = z * self._push(tc - hold_from) if overshoot is None else z
+            g = self._drift(tc - hold_from)
+            x, y = x + dvx * g, y + dvy * g
             overshoot = None
             if crash:  # "nhìn cái này!": 6 khung tăng tốc dồn (ease-in), tới nơi vượt nhẹ rồi bật về
                 d = CRASH_FRAMES / FPS
@@ -296,17 +300,25 @@ class Film:
                 dist = abs(cx - x) + abs(cy - y) + abs(math.log(max(cz, 0.05) / max(z0, 0.05)))
                 d = clamp(max(d, CAM_MIN + 0.8 * min(1.0, dist)), CAM_MIN, CAM_MAX)
                 k = smoother((t - tc) / d)
-            x, y, z, r = x + (cx - x) * k, y + (cy - y) * k, z0 + (cz - z0) * k, r + (cr - r) * k
+            mx, my = cx - x, cy - y
+            x, y, z, r = x + mx * k, y + my * k, z0 + (cz - z0) * k, r + (cr - r) * k
             hold_from = tc + d
             if t < tc + d:
                 return x, y, z, r
             if crash:
                 overshoot = tc + d
+            n = math.hypot(mx, my)
+            dvx, dvy = (mx / n, my / n) if n > 0.02 else ((1.0, 0.0) if i % 2 else (-1.0, 0.0))
         if overshoot is not None:
             q = (t - overshoot) * FPS / 5
             if q < 1:
                 z *= 1 + 0.045 * (1 - smoother(q))
-        return x, y, z * self._push(t - hold_from), r
+        g = self._drift(t - hold_from)
+        return x + dvx * g, y + dvy * g, z * self._push(t - hold_from), r
+
+    @staticmethod
+    def _drift(dt):
+        return 0.0 if dt <= 0 else DRIFT_MAX * (1 - math.exp(-dt / 2.5))
 
     @staticmethod
     def _push(dt):
@@ -1350,16 +1362,21 @@ def sfx_events(film: Film):
 LOUD_I, LOUD_TP, LOUD_LRA = -14.0, -2.0, 9.0  # chuẩn YouTube: -14 LUFS, đỉnh ≤ -2 dBTP (chừa chỗ cho AAC)
 
 
+# nén giọng cho đều (LRA thấp như Shorts viral, ~2–4 LU): câu nhỏ được kéo lên, chữ to không vọt
+VOICE_COMP = "acompressor=threshold=0.08:ratio=3.5:attack=4:release=90:makeup=2"
+
+
 def mix_audio(voice_wav, sfx_wav, music, out_wav):
     """Trộn giọng + SFX + nhạc (nhạc tự nhỏ lại khi có lời), rồi chuẩn hoá loudness 2 lượt về -14 LUFS."""
     import json as _json
     import re as _re
     inputs = ["-i", str(Path(voice_wav).resolve()), "-i", str(Path(sfx_wav).resolve())]
-    mix = "[0:a]volume=1.0[v];[1:a]volume=0.9[s];[v][s]amix=inputs=2:duration=first:normalize=0"
+    vc = VOICE_COMP
+    mix = f"[0:a]{vc}[v];[1:a]volume=0.9[s];[v][s]amix=inputs=2:duration=first:normalize=0"
     if music:
         inputs += ["-stream_loop", "-1", "-i", str(Path(music).resolve())]
         # nhạc nền nằm dưới giọng ~6–10 dB khi có lời (sidechain ducking)
-        mix = ("[0:a]volume=1.0,asplit=2[v][vk];[1:a]volume=0.9[s];[2:a]volume=0.42[m0];"
+        mix = (f"[0:a]{vc},asplit=2[v][vk];[1:a]volume=0.9[s];[2:a]volume=0.42[m0];"
                "[m0][vk]sidechaincompress=threshold=0.02:ratio=6:attack=15:release=350[m];"
                "[v][s][m]amix=inputs=3:duration=first:normalize=0")
     raw = Path(out_wav).with_name("mix_raw.wav")
@@ -1447,7 +1464,9 @@ def render(film_json, timings, assets, voice_wav, out_mp4, music=None, cwd=None,
         music = work / "music.wav"
         # nhịp nhạc tự tạo: đặt phách mạnh đầu ô nhịp đúng lúc chớp trắng sau hook
         down = film.scene_spans[1][0] if len(film.scene_spans) > 1 else 0.0
-        MUSIC.build(film.total, music, film_json.get("music", "upbeat"), downbeat_at=down)
+        # mỗi video một bản nhạc riêng: hạt giống lấy từ tiêu đề + chủ đề
+        mseed = zlib.crc32((str(film_json.get("title", "")) + str(film_json.get("topic", ""))).encode()) % 100000
+        MUSIC.build(film.total, music, film_json.get("music", "upbeat"), seed=mseed, downbeat_at=down)
     mix_wav = mix_audio(voice_wav, sfx_wav, music, work / "mix.wav")
     # màu tươi hơn một chút (video mẫu: độ bão hoà 0,38–0,65, không bị đen bệt)
     vf = "eq=saturation=1.08:contrast=1.03"

@@ -24,6 +24,8 @@ from character import NAMES as ACTIONS
 from script_gen import EXPRESSIONS, _clean, generate_script
 from tts import synthesize
 
+GAP = 0.12  # nghỉ giữa 2 câu/cảnh (s)
+
 ROOT = Path(__file__).resolve().parent.parent
 MAX_BACKGROUNDS = 20  # video dài dùng chung nền cho vài cảnh liền nhau (đỡ chờ API ảnh free)
 
@@ -106,10 +108,15 @@ def run_motion(a, n_scenes, size, vertical, font, font_path):
         else:
             adur, wt = synthesize_words(sc["narration"], mp3, voice, a.rate, a.offline)
             tfile.write_text(json.dumps(wt))
-        dur = round(adur + 0.25, 2)
-        wav = work / f"voice_{vkey}.wav"
+        # lời đọc dày như Shorts viral: cắt khoảng lặng đầu/cuối của Edge TTS, giữa các cảnh chỉ nghỉ ~0.12 s
+        lead = max(0.0, min(0.4, wt[0][0] - 0.03)) if wt else 0.0
+        end = min(adur, max(e for _, e in wt) + 0.05) if wt else adur
+        wt = [(s_ - lead, e_ - lead) for s_, e_ in wt]
+        dur = round(max(0.6, end - lead + GAP), 2)
+        wav = work / f"voice_{vkey}_t.wav"
         if not wav.exists():
-            subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(mp3), "-af", "apad",
+            subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-ss", f"{lead:.3f}", "-i", str(mp3),
+                            "-af", "afade=t=out:st=%.3f:d=0.04,apad" % max(0, end - lead - 0.04),
                             "-t", f"{dur:.2f}", "-ar", "44100", "-ac", "2", str(wav)], check=True)
         timings.append((dur, wt))
         wavs.append(wav)

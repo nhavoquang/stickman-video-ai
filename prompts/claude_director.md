@@ -36,12 +36,17 @@ In ra số cảnh, số giây và số từ mỗi cảnh.
 
 ## Bước 2. Viết `output/script.json` theo motion_spec
 - Đúng ngôn ngữ, đúng số cảnh, nội dung đúng sự thật, cụ thể, kể như câu chuyện có hook và cái kết đã.
+- Ưu tiên khuôn chuyện (rule I trong motion_spec): nhân vật yếu thế có vai rõ (nhìn trang phục là biết) làm điều
+  trông ngớ ngẩn → kẻ chế giễu (có mặt ngay từ hook) cười → nguy cơ tăng → giải thích bằng ví dụ đời thường có
+  cảnh cận đồ vật (rule J) → nhân vật đúng VÀ kẻ chế giễu bị trả giá, nhắc lại hook. Mọi sân khấu thuộc một
+  "thế giới" liền mạch (cùng bảng màu/ánh sáng).
 - Nghĩ như đạo diễn: mỗi câu nói cần HÌNH gì để người xem hiểu ngay? Chọn 1–3 sân khấu dùng lâu, 1–3 nhân vật
   có 2–3 biểu cảm, 6–14 đạo cụ cụ thể. Cứ 1–2 giây có một thay đổi nhỏ (nhân vật, đạo cụ,
   nhãn); camera chỉ lướt mỗi 2–4 giây rồi giữ cho người xem đọc. Người dùng KHÔNG thích hình rung giật: `shake`
   tối đa 2 lần/video, hạn chế action shake/tremble/wiggle.
 - Viết kỹ `title` (≤70 ký tự, gây tò mò), `description` chuẩn SEO, `hashtags`, `tags`, `thumbnail` (chữ 2–4 từ, nhân vật + biểu cảm mạnh nhất, đạo cụ) — đây là những gì đăng lên YouTube.
-- `art_style` hợp chủ đề (ví dụ trẻ em: chibi pastel; công nghệ: flat vector neon; lịch sử: tranh minh hoạ cổ điển),
+- `art_style` mặc định là kiểu "stylized 3D cel-shaded cartoon diorama" như mẫu trong motion_spec (kiểu của các
+  video viral mẫu); chỉ đổi khi brief/style_ref yêu cầu hoặc chủ đề thật sự cần khác,
   và PHẢI chi tiết, chất lượng cao: nêu rõ kiểu nét, chất liệu/texture, ánh sáng, bảng màu (≥ 25 từ tiếng Anh).
   Prompt sân khấu tả nhiều chi tiết cụ thể (đồ vật, chất liệu, ánh sáng, thời điểm trong ngày); prompt nhân vật
   tả trang phục, kiểu tóc, phụ kiện. Ở Bước 5, ảnh nào mờ, sơ sài, ít chi tiết → viết lại prompt chi tiết hơn.
@@ -49,7 +54,7 @@ In ra số cảnh, số giây và số từ mỗi cảnh.
 ## Bước 3. Tự chấm và sửa (2 vòng)
 Chấm thang 10: hook (câu 1 là nghịch lý nói như sự thật, 10–16 từ, cảnh 1 chỉ gồm câu hook), đủ công thức
 "Storytelling rules" trong motion_spec (bối cảnh → leo thang 3–6 nhịp có thoại → câu hỏi bí ẩn → "You see," + ví dụ
-đời thường → twist cuối; Shorts không có lời kêu gọi like/sub), mỗi 8–10 giây có điều bất ngờ, độ chính xác, giá trị/độ hay, nhịp kể, độ "sống" của hình (mật độ sự kiện,
+đời thường → twist cuối; Shorts không có lời kêu gọi like/sub), khuôn chuyện rule I (có kẻ chế giễu từ hook và bị trả giá cuối) + cảnh cận rule J, mỗi 8–10 giây có điều bất ngờ, độ chính xác, giá trị/độ hay, nhịp kể, độ "sống" của hình (mật độ sự kiện,
 camera, biểu cảm), độ rõ ràng (hình minh hoạ đúng ý nói), ngôn ngữ tự nhiên. Ghi điểm + lý do vào
 `output/review_notes.md`, sửa `script.json`. Lặp đến khi mọi tiêu chí ≥ 8 hoặc đã 2 vòng.
 

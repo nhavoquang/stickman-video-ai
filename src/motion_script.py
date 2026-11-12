@@ -84,7 +84,8 @@ def clean(film):
                         if str(h).strip().lstrip("#")][:5]
     if not isinstance(film.get("thumbnail"), dict):
         film["thumbnail"] = {}
-    film.setdefault("art_style", "cute 2D cartoon, bold clean outlines, soft cel shading, vibrant colors")
+    film.setdefault("art_style", "stylized 3D cel-shaded cartoon diorama, chunky toy-like shapes, thick clean black outlines, "
+                                  "soft global illumination, saturated playful colors, painterly textures, highly detailed")
     film["cast"] = [c for c in film.get("cast", []) if c.get("id") and c.get("prompt")]
     film["props"] = [p for p in film.get("props", []) if p.get("id") and p.get("prompt")]
     film["stages"] = [s for s in film.get("stages", []) if s.get("id") and s.get("prompt")]

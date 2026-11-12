@@ -17,8 +17,8 @@ Return ONLY JSON with this shape:
   "tags": ["8-15 search keywords/phrases people type on YouTube"],
   "thumbnail": {"text": "2-4 WORD HOOK", "cast": "hero", "expr": "shock", "prop": "coffee", "stage": "office"},
   "music": "upbeat | chill | mystery | epic | none  (background music mood that fits the topic)",
-  "art_style": "one consistent, DETAILED art style for ALL images (≥ 25 words: linework, textures, lighting, palette), e.g. 'polished 2D cartoon illustration, bold clean outlines, soft cel shading with subtle gradients, warm golden-hour lighting, rich paper-like textures, vibrant harmonious palette, highly detailed'",
-  "cast":  [{"id": "hero", "prompt": "a cute chibi young office worker with glasses, blue shirt",
+  "art_style": "one consistent, DETAILED art style for ALL images (≥ 25 words: linework, textures, lighting, palette), default (unless the user/brief asks otherwise): 'stylized 3D cel-shaded cartoon diorama, chunky toy-like shapes, thick clean black outlines, soft global illumination, saturated playful colors, painterly textures on wood, cloth and water, cinematic lighting, highly detailed'",
+  "cast":  [{"id": "hero", "prompt": "a simple cartoon character with a big round white head and thin stick body, wearing a tall chef hat and white apron (the costume tells the role)",
              "expressions": {"shock": "same character, wide eyes, raised eyebrows, hands on cheeks",
                              "happy": "same character, eyes closed happily, thumbs up"}}],
   "props": [{"id": "coffee", "prompt": "a steaming cup of coffee"}],
@@ -54,7 +54,8 @@ strongest emotion, an optional prop that tells the story at a glance, and the st
 - Camera: `x,y` = point to look at (0–1 on stage), `zoom` 0.7 (wide, whole stage) … 1.6 (close-up). Never more than 1.6:
   the stage is an AI image and gets blurry when zoomed further (the engine caps it at 1.7).
   Camera moves are eased automatically (smooth in AND out, 0.6–1.4 s; long moves take longer). Between
-  moves the camera keeps slowly pushing in by itself, so never add tiny "drift" camera events.
+  moves the camera keeps slowly pushing in and drifting on in the direction of the last move by itself,
+  so never add tiny "drift" camera events.
   Close-ups (zoom ≥ 1.4) blur the stage background automatically (depth of field); wides stay sharp.
 
 ## Timing
@@ -108,6 +109,14 @@ F. PAYOFF: an ironic twist or callback in the last 1–2 short sentences. Shorts
 G. Style: plain spoken English with contractions, sentences ~13 words, fast and steady
    (~3.7 words per second, almost no pauses), "you"-focused or story mode with a named everyman.
 H. The character reacts (expression change / action) at least every ~6 seconds.
+I. STORY SHAPE that wins (measured frame by frame on "Why Sailors Carried Storm Oil" and "This Man Found a
+   Real-Life Money Glitch… in Pudding"): an UNDERDOG with a clear role does something that looks stupid →
+   a MOCKER (a rival, boss or crowd, shown in the hook too) laughs at it → stakes/danger rise → the reveal
+   with an everyday analogy → the underdog is proven right AND the mocker pays for laughing (ironic
+   callback to the hook). Name the roles by costume (chef, captain, pirate, cashier…), not by long intros.
+   Use this shape whenever the topic allows it; for pure fact topics invent an everyman and a doubter.
+J. INSERT SHOT for the analogy: one scene uses a small dedicated stage that is a CLOSE-UP of an everyday
+   object (a soup bowl, a phone screen, a coin) filling the frame, so the viewer SEES the mechanism.
 
 ## Direction rules (this is what makes the video look professional)
 1. HOOK: scene 1 starts close (zoom ≥ 1.4) on something surprising; first event at word 0.
@@ -116,8 +125,10 @@ H. The character reacts (expression change / action) at least every ~6 seconds.
    the viewer can read; the engine keeps a gentle push-in during holds by itself.
    CALM, NOT SHAKY: `shake` at most 2 per video (strength ≤ 1, only for a real impact); `action` shake/
    tremble/wiggle at most once per character per scene; never stack several jumpy actions in one second.
-3. Keep ONE stage for several scenes and move the camera across it (continuity) — change stage only
-   when the story moves to a new place/idea (usually 2–4 stages per minute).
+3. ONE WORLD: build the story in one connected world (e.g. a ship: deck, galley, open sea) and keep each
+   stage for several scenes, moving the camera across it (continuity). Stages of the same world share
+   palette, lighting and props so a dissolve between them feels like the camera flying, not a new video.
+   Change stage only when the story moves to a new place/idea (usually 2–4 stages per minute).
 4. Reuse the same cast across the video (1–3 characters). Use expressions for emotional beats
    (shock, happy, thinking, sad, angry…). Give each important character 2–3 expressions.
 5. Props make abstract ideas concrete: money, clocks, food, devices, icons, symbols, objects of the story.
