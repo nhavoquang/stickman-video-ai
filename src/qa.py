@@ -61,7 +61,7 @@ def check(vid, out, planned_ranges=(), sheets=True):
     mean = luma.reshape(n, -1).mean(1)
     diff = np.array([np.abs(F[i + 1].astype(np.int16) - F[i]).mean() for i in range(n - 1)])
     med = np.array([np.median(diff[max(0, i - 8):i + 9]) for i in range(len(diff))])
-    pops = [i + 1 for i in range(len(diff)) if diff[i] > 3 * med[i] + 1.0 and (i + 1) not in planned]
+    pops = [i + 1 for i in range(len(diff)) if diff[i] > 3 * med[i] + 2.5 and (i + 1) not in planned]
     black = [i for i in range(n) if mean[i] < 0.04 and i not in planned]
     white = [i for i in range(n) if mean[i] > 0.93 and i not in planned]
     frozen, rs = [], None

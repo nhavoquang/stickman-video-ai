@@ -17,12 +17,15 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 URL = "https://image.pollinations.ai/prompt/{prompt}"
 FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+QUALITY = ("masterpiece, highly detailed, professional illustration, crisp clean linework, rich textures, "
+           "soft studio lighting, vibrant harmonious colors, sharp focus, high resolution")
 CUTOUT_SUFFIX = ("full body, single subject, centered, isolated on a plain pure white background, "
                  "no background scenery, no shadow, no text, no watermark")
 # miệng do engine tự vẽ và nhép theo giọng, nên ảnh gốc chỉ cần miệng nhỏ khép kín
 ACTOR_FACE = ("front view facing the camera, clearly visible simple cute face, big expressive eyes, "
               "small closed mouth, ")
-STAGE_SUFFIX = ("wide establishing shot, detailed environment, no people, no characters, no text, "
+STAGE_SUFFIX = ("wide establishing shot, richly detailed environment with many small props and textures, "
+                "depth and atmospheric perspective, cinematic lighting, no people, no characters, no text, "
                 "no letters, no watermark, clean composition with open space in the middle")
 LOGO_CROP = 0.11  # phần đáy ảnh (có logo) bị cắt bỏ
 
@@ -44,8 +47,9 @@ def _fetch(prompt, w, h, seed, tag):
                              headers=headers, timeout=180)
             if r.ok and r.headers.get("content-type", "").startswith("image"):
                 from io import BytesIO
-                print(f"[asset] {tag} OK")
-                return Image.open(BytesIO(r.content)).convert("RGB")
+                im = Image.open(BytesIO(r.content)).convert("RGB")
+                print(f"[asset] {tag} OK {im.size[0]}x{im.size[1]}")
+                return im
             print(f"[asset] {tag} HTTP {r.status_code}, đợi rồi thử lại")
         except requests.RequestException as e:
             print(f"[asset] {tag} lỗi {e}, thử lại")
@@ -111,7 +115,7 @@ def sticker(img: Image.Image, border=10) -> Image.Image:
 
 def make_cutout(prompt: str, style: str, out_dir: Path, kind="actor", offline=False, label="") -> Path:
     extra = ACTOR_FACE if kind == "actor" else ""
-    full = f"{style}. {prompt}. {extra}{CUTOUT_SUFFIX}"
+    full = f"{style}. {prompt}. {extra}{QUALITY}, {CUTOUT_SUFFIX}"
     key = _key(full, kind)
     out = out_dir / f"{kind}_{key}.png"
     if out.exists():
@@ -138,7 +142,7 @@ def make_stage(prompt: str, style: str, out_dir: Path, size, offline=False) -> P
     """Sân khấu rộng gấp ~1.5 lần khung hình để camera di chuyển."""
     fw, fh = size
     sw, sh = int(fw * 1.5), int(fh * 1.5)
-    full = f"{style}. {prompt}. {STAGE_SUFFIX}"
+    full = f"{style}. {prompt}. {QUALITY}, {STAGE_SUFFIX}"
     key = _key(full, sw, sh)
     out = out_dir / f"stage_{key}.jpg"
     if out.exists():
@@ -150,10 +154,14 @@ def make_stage(prompt: str, style: str, out_dir: Path, size, offline=False) -> P
     if img is not None:
         w, h = img.size
         img = img.crop((0, 0, w, int(h / (1 + LOGO_CROP))))
-        img = img.resize((sw, sh), Image.LANCZOS)
+        if img.size != (sw, sh):  # phóng to bằng LANCZOS rồi làm nét lại cho đỡ mờ khi camera zoom gần
+            k = sw / img.size[0]
+            img = img.resize((sw, sh), Image.LANCZOS)
+            if k > 1.05:
+                img = img.filter(ImageFilter.UnsharpMask(radius=1.6 * k, percent=70, threshold=2))
     else:
         img = _placeholder_stage((sw, sh), key)
-    img.save(out, "JPEG", quality=92)
+    img.save(out, "JPEG", quality=95)
     return out
 
 

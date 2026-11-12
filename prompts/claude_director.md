@@ -37,9 +37,14 @@ In ra số cảnh, số giây và số từ mỗi cảnh.
 ## Bước 2. Viết `output/script.json` theo motion_spec
 - Đúng ngôn ngữ, đúng số cảnh, nội dung đúng sự thật, cụ thể, kể như câu chuyện có hook và cái kết đã.
 - Nghĩ như đạo diễn: mỗi câu nói cần HÌNH gì để người xem hiểu ngay? Chọn 1–3 sân khấu dùng lâu, 1–3 nhân vật
-  có 2–3 biểu cảm, 6–14 đạo cụ cụ thể. Camera luôn di chuyển; cứ 0,5–1,5 giây lại có thay đổi.
+  có 2–3 biểu cảm, 6–14 đạo cụ cụ thể. Cứ 1–2 giây có một thay đổi nhỏ (nhân vật, đạo cụ,
+  nhãn); camera chỉ lướt mỗi 2–4 giây rồi giữ cho người xem đọc. Người dùng KHÔNG thích hình rung giật: `shake`
+  tối đa 2 lần/video, hạn chế action shake/tremble/wiggle.
 - Viết kỹ `title` (≤70 ký tự, gây tò mò), `description` chuẩn SEO, `hashtags`, `tags`, `thumbnail` (chữ 2–4 từ, nhân vật + biểu cảm mạnh nhất, đạo cụ) — đây là những gì đăng lên YouTube.
-- `art_style` hợp chủ đề (ví dụ trẻ em: chibi pastel; công nghệ: flat vector neon; lịch sử: tranh minh hoạ cổ điển).
+- `art_style` hợp chủ đề (ví dụ trẻ em: chibi pastel; công nghệ: flat vector neon; lịch sử: tranh minh hoạ cổ điển),
+  và PHẢI chi tiết, chất lượng cao: nêu rõ kiểu nét, chất liệu/texture, ánh sáng, bảng màu (≥ 25 từ tiếng Anh).
+  Prompt sân khấu tả nhiều chi tiết cụ thể (đồ vật, chất liệu, ánh sáng, thời điểm trong ngày); prompt nhân vật
+  tả trang phục, kiểu tóc, phụ kiện. Ở Bước 5, ảnh nào mờ, sơ sài, ít chi tiết → viết lại prompt chi tiết hơn.
 
 ## Bước 3. Tự chấm và sửa (2 vòng)
 Chấm thang 10: hook (câu 1 là nghịch lý nói như sự thật, 10–16 từ, cảnh 1 chỉ gồm câu hook), đủ công thức
@@ -79,7 +84,7 @@ chỉnh số và chạy lại (tối đa 2 lần).
   → sửa x, y, size, camera.
 - Mặt nhân vật: engine giữ nguyên ảnh gốc, nên biểu cảm phải nằm sẵn trong ảnh. Mặt méo, mắt lệch, thiếu mắt
   → viết lại prompt của ảnh đó (mặt nhìn thẳng, mắt rõ ràng, đơn giản).
-- `events_per_second` < 0.7 → thêm sự kiện. Tổng thời lượng lệch > 20% so với yêu cầu → sửa lời dẫn.
+- `events_per_second` < 0.5 → thêm sự kiện; > 1.1 → bớt (quá dày trông rối, giật). Tổng thời lượng lệch > 20% so với yêu cầu → sửa lời dẫn.
 Sửa `script.json` rồi chạy lại lệnh Bước 4 (chỉ phần đổi mới được tạo lại). Ghi những gì đã sửa vào
 `output/review_notes.md`.
 

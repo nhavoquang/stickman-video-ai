@@ -54,8 +54,10 @@ def smoother(t):
 # - mỗi cú lướt 18–40 khung (0,6–1,3 s), êm cả hai đầu,
 # - rung khi va chạm đổi chiều MỖI khung và tắt sau ~7 khung,
 # - mọi phản ứng hình xuất hiện sớm hơn chữ 0–3 khung.
-PUSH_RATE = 0.0025      # tốc độ đẩy vào lúc bắt đầu giữ cảnh (0,25 %/khung)
-PUSH_MAX = 0.14         # tổng đẩy vào tối đa trong một lần giữ (+14 %)
+PUSH_RATE = 0.0015      # tốc độ đẩy vào lúc bắt đầu giữ cảnh (0,15 %/khung, mức êm của video mẫu)
+PUSH_MAX = 0.08         # tổng đẩy vào tối đa trong một lần giữ (+8 %)
+ZOOM_MAX = 1.7
+MAX_SHAKES = 2          # rung cả khung hình: tối đa 2 lần mỗi video, nhẹ
 CAM_MIN, CAM_MAX = 0.6, 1.4
 SHAKE_FRAMES = 7
 LEAD = 2 / FPS          # hình đến trước chữ 2 khung
@@ -232,7 +234,9 @@ class Film:
                                      float(ev.get("zoom", 1.0)), float(ev.get("dur", EV_DUR["camera"])),
                                      float(ev.get("roll", 0.0)), bool(ev.get("crash", False))))
             elif do == "shake":
-                self.shakes.append((t, float(ev.get("strength", 1.0))))
+                # giữ tối đa MAX_SHAKES cú, cách nhau ≥ 6 s, cường độ ≤ 1 (người xem thấy rung nhiều là khó chịu)
+                if len(self.shakes) < MAX_SHAKES and (not self.shakes or t - self.shakes[-1][0] >= 6):
+                    self.shakes.append((t, min(1.0, float(ev.get("strength", 1.0)))))
             elif do in ("arrow", "line", "highlight", "label", "burst", "flow"):
                 hold = float(ev.get("hold", 2.6 if do != "burst" else 1.0))
                 self.overlays.append((t, ev, t + hold, gen))
@@ -410,7 +414,7 @@ def obj_state(o, t, film_assets):
                         st["sy"] *= 1 - 0.14 * c
                         st["sx"] *= 1 + 0.10 * c
                 elif anim == "shake":
-                    st["dx"] += 0.012 * math.sin(p * 60) * (1 - p)
+                    st["dx"] += 0.008 * math.sin(p * 40) * (1 - p)
                 elif anim == "spin":
                     st["rot"] += 360 * ease_io(p)
                 elif anim == "nod":
@@ -775,7 +779,8 @@ class Renderer:
         # xoá phông theo độ gần của camera: cảnh rộng giữ nét, cận cảnh nền mờ (≈1/3 thời lượng như video mẫu)
         self._dof_amt = 1.0 if self.dof.get(sid) else clamp((z - 1.3) / 0.35)
         zmin = max(self.W / sw, self.H / sh) * 1.001
-        z = max(z, zmin) * (1 + 0.075 * self.f.punch_at(t))
+        # ảnh sân khấu AI phóng quá 1,7 lần là mờ: giới hạn độ zoom
+        z = max(min(z, ZOOM_MAX), zmin) * (1 + 0.04 * self.f.punch_at(t))
         vw, vh = self.W / z, self.H / z
         px = clamp(cx * sw, vw / 2, sw - vw / 2) + offset[0] * vw
         py = clamp(cy * sh, vh / 2, sh - vh / 2) + offset[1] * vh
@@ -783,7 +788,7 @@ class Renderer:
         for ts, s in self.f.shakes:
             n = int(round((t - ts) * FPS))
             if 0 <= n < SHAKE_FRAMES:
-                a = (1 - n / SHAKE_FRAMES) * 9 * s / z * self.H / 1080 * (-1 if n % 2 else 1)
+                a = (1 - n / SHAKE_FRAMES) * 6 * s / z * self.H / 1080 * (-1 if n % 2 else 1)
                 px += a
                 py += a * 0.6
                 roll += 0.3 * s * (1 - n / SHAKE_FRAMES) * (1 if n % 2 else -1)
@@ -872,17 +877,18 @@ class Renderer:
         h_px = st["size"] * sh  # cao theo tỉ lệ chiều cao sân khấu
         s = h_px / ih
         seed = (zlib.crc32(str(o["id"]).encode()) % 100) / 10  # cố định giữa các lần chạy (hash() thì không)
-        breathe = 1 + 0.014 * math.sin(t * 2.6 + seed)
+        breathe = 1 + 0.008 * math.sin(t * 1.8 + seed)  # thở rất nhẹ, chậm
         si = next((i for i, (a, b, _) in enumerate(self.f.scene_spans) if a <= t < b), 0)
         talk, word = 0.0, ""
         if self.speakers[si] == o["id"]:
             f = int(t * FPS)
             talk = self.env[f] if f < len(self.env) else 0
             word = self._word_at(t, si)
-        sx = st["sx"] * (1 - 0.02 * talk)
-        sy = st["sy"] * breathe * (1 + 0.035 * talk)
+        # KHÔNG co giãn theo âm lượng giọng nữa: đổi theo từng khung hình nên trông như rung giật
+        sx = st["sx"]
+        sy = st["sy"] * breathe
         # lắc lư nhẹ quanh bàn chân (sống động, không cứng đơ) + gật gù theo nhịp nói
-        lean = st["lean"] + 0.022 * math.sin(t * 1.5 + seed) + 0.03 * talk * math.sin(t * 9 + seed)
+        lean = st["lean"] + 0.012 * math.sin(t * 1.1 + seed)
         x = st["x"] * sw + st["dx"] * self.W
         y = st["y"] * sh + st["dy"] * self.H
         # quá nhỏ hoặc trong suốt (đầu hiệu ứng pop/cuối exit): bỏ qua, tránh ma trận suy biến làm cairo lỗi
@@ -1184,7 +1190,7 @@ class Renderer:
                 x += wd * k
                 continue
             p = (t - a + 0.03) / 0.16
-            sc = (0.55 + 0.45 * back(clamp(p), 2.8)) if p < 1 else 1.0
+            sc = (0.7 + 0.3 * back(clamp(p), 1.4)) if p < 1 else 1.0
             emph = wi in self.f.emph
             cur = a <= t < b + 0.05
             txt = w.upper()
