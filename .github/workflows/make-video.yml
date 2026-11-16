@@ -34,10 +34,10 @@ on:
         options: [nu, nam]
         default: nu
       style:
-        description: "Kiểu video: motion = hoạt hình chuyển động chuyên nghiệp, doodle/shirt = người que cũ"
+        description: "Kiểu video: cinema = phim 3D cắt góc máy, không hiệu ứng (mặc định); motion = motion graphics; doodle/shirt = người que cũ"
         type: choice
-        options: [motion, doodle, shirt]
-        default: motion
+        options: [cinema, motion, doodle, shirt]
+        default: cinema
       rate:
         description: "Tốc độ đọc (vd -10%, +0%, +15%)"
         default: "+5%"
@@ -73,7 +73,7 @@ jobs:
       ASPECT: ${{ inputs.aspect || '16:9' }}
       DURATION: ${{ inputs.duration || '60' }}
       VOICE: ${{ inputs.voice || 'nu' }}
-      STYLE: ${{ inputs.style || 'motion' }}
+      STYLE: ${{ inputs.style || 'cinema' }}
       RATE: ${{ inputs.rate || '+5%' }}
       SUBTITLES: ${{ inputs.subtitles || 'on' }}
       NOTES: ${{ inputs.notes || '' }}

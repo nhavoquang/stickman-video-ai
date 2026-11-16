@@ -190,6 +190,102 @@ def run_motion(a, n_scenes, size, vertical, font, font_path):
     print(f"XONG: {video} ({total:.0f} giây) | gói đăng YouTube: {yt}")
 
 
+def run_cinema(a, n_scenes, size, vertical, font, font_path):
+    """Kiểu "cinema": ảnh AI trọn cảnh cho từng góc máy, cắt góc máy, không hiệu ứng đè hình."""
+    import cinema
+    import publish
+    from tts import audio_duration, synthesize_words
+
+    per = a.duration / n_scenes
+    plan = {"scenes": n_scenes, "seconds_per_scene": round(per, 1), "words_per_scene_latin": round(per * 3.5),
+            "shots_total": max(3, round(a.duration / 2.2)), "language": lang_info(a.language)[0],
+            "aspect": a.aspect, "vertical": vertical, "duration": a.duration}
+    if a.print_plan:
+        print(json.dumps(plan, ensure_ascii=False, indent=2))
+        return
+    if a.script_file:
+        film = cinema.clean(json.loads(Path(a.script_file).read_text(encoding="utf-8")))
+    elif a.topic:
+        film = cinema.generate(a.topic, plan, a.model, a.notes)
+    else:
+        raise SystemExit("Cần --topic hoặc --script-file")
+    film["style"] = "cinema"
+    out = Path(a.out)
+    work = out / "work"
+    adir = work / "assets"
+    adir.mkdir(parents=True, exist_ok=True)
+    cinema.dump(film, out / "script.json")
+
+    # 1. ảnh từng góc máy (cache theo prompt)
+    shots = cinema.shot_list(film)
+    paths = {}
+    for k, (i, j, sh) in enumerate(shots, 1):
+        print(f"--- Ảnh góc máy {k}/{len(shots)} (cảnh {i + 1})")
+        paths[id(sh)] = cinema.make_shot(cinema.full_prompt(film, sh), adir, size, a.offline)
+
+    # 2. giọng đọc
+    voice = voice_for(a.language, a.voice)
+    timings, wavs = [], []
+    for sc in film["scenes"]:
+        vkey = h(sc["narration"], voice, a.rate, a.offline, "w")
+        mp3 = work / f"voice_{vkey}.mp3"
+        tfile = work / f"voice_{vkey}.times.json"
+        if mp3.exists() and tfile.exists():
+            adur, wt = audio_duration(mp3), [tuple(x) for x in json.loads(tfile.read_text())]
+        else:
+            adur, wt = synthesize_words(sc["narration"], mp3, voice, a.rate, a.offline)
+            tfile.write_text(json.dumps(wt))
+        lead = max(0.0, min(0.4, wt[0][0] - 0.03)) if wt else 0.0
+        end = min(adur, max(e for _, e in wt) + 0.05) if wt else adur
+        wt = [(s_ - lead, e_ - lead) for s_, e_ in wt]
+        dur = round(max(0.6, end - lead + GAP), 2)
+        wav = work / f"voice_{vkey}_t.wav"
+        if not wav.exists():
+            subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-ss", f"{lead:.3f}", "-i", str(mp3),
+                            "-af", "afade=t=out:st=%.3f:d=0.04,apad" % max(0, end - lead - 0.04),
+                            "-t", f"{dur:.2f}", "-ar", "44100", "-ac", "2", str(wav)], check=True)
+        timings.append((dur, wt))
+        wavs.append(wav)
+    (work / "voice.txt").write_text("".join(f"file '{w.name}'\n" for w in wavs))
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "concat", "-safe", "0",
+                    "-i", "voice.txt", "-c", "copy", "voice.wav"], check=True, cwd=work)
+
+    # 3. xem trước
+    review = out / "review"
+    shutil.rmtree(review, ignore_errors=True)
+    subs = a.subtitles == "on"
+    frames = cinema.render(film, timings, paths, work / "voice.wav", None, work, subs,
+                           preview_dir=review / "frames", preview_only=True)
+    sheets = contact_sheets(frames, review / "shots", per_sheet=12)
+    rep = cinema.report(film, timings)
+    rep["shot_sheets"] = [str(x) for x in sheets]
+    (review / "report.json").write_text(json.dumps(rep, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"[review] {rep['shots']} góc máy, trung bình {rep['avg_shot_seconds']}s, tổng {rep['total_seconds']}s")
+    if a.stage == "assets":
+        return
+
+    # 4. dựng + thumbnail + gói đăng
+    name = slugify(film["title"]) + ("-shorts" if vertical else "")
+    video = out / f"{name}.mp4"
+    cinema.render(film, timings, paths, work / "voice.wav", video, work, subs, qa_dir=review / "qa")
+    th = film.get("thumbnail") or {}
+    try:
+        si, sj = th.get("shot", [0, 0])
+        tsrc = paths[id(film["scenes"][int(si)]["shots"][int(sj)])]
+    except (ValueError, TypeError, IndexError, KeyError):
+        tsrc = paths[id(shots[0][2])]
+    thumb = out / f"{name}_thumbnail.jpg"
+    base = cinema.cover_crop(tsrc, (1280, 720), work / "thumb_base.jpg")
+    make_thumbnail(base, (th.get("text") or film["title"]), thumb, (1280, 720), font_path,
+                   a.language in scene_video.NO_SPACE_LANGS)
+    settings = {k: v for k, v in vars(a).items() if k not in ("script_file", "out", "offline")}
+    meta = {"title": film["title"], "description": publish.description_text(film, vertical),
+            "tags": publish.tags_list(film), "settings": settings}
+    (out / f"{name}.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+    yt = publish.package(out, film, video, thumb, vertical, a.language, settings)
+    print(f"XONG: {video} ({rep['total_seconds']:.0f} giây, {rep['shots']} góc máy) | gói đăng YouTube: {yt}")
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--topic", help="Chủ đề video")
@@ -200,8 +296,8 @@ def main():
     p.add_argument("--scenes", type=int, default=0, help="Số cảnh (0 = tự tính theo độ dài)")
     p.add_argument("--voice", default="nu", help="nu | nam | tên giọng Edge TTS")
     p.add_argument("--rate", default="+5%", help="Tốc độ đọc, ví dụ +10%%")
-    p.add_argument("--style", default="motion",
-                   help="motion (dựng chuyển động, mặc định) | doodle / shirt (người que cũ)")
+    p.add_argument("--style", default="cinema",
+                   help="cinema (ảnh trọn cảnh + cắt góc máy, mặc định) | motion (motion graphics) | doodle / shirt")
     p.add_argument("--subtitles", default="on", choices=["on", "off"])
     p.add_argument("--style-ref", default="",
                    help="Ảnh mẫu phong cách: tên thư mục trong style_refs/, đường dẫn hoặc link ảnh")
@@ -214,7 +310,7 @@ def main():
     p.add_argument("--stage", default="all", choices=["all", "assets"],
                    help="assets = chỉ tạo ảnh nền + giọng đọc + ảnh xem trước (để duyệt), all = dựng video")
     p.add_argument("--print-plan", action="store_true", help="In số cảnh, số từ mỗi cảnh... rồi thoát")
-    p.add_argument("--renderer", default=None, choices=["motion", "classic"],
+    p.add_argument("--renderer", default=None, choices=["cinema", "motion", "classic"],
                    help="motion = dựng chuyển động chuyên nghiệp (mặc định), classic = bản người que cũ")
     a = p.parse_args()
     if a.brief.strip():  # mô tả nội dung của người dùng: ưu tiên cao nhất khi viết kịch bản
@@ -222,27 +318,31 @@ def main():
                    f"ending, things to avoid); keep facts true:\n{a.brief.strip()}"
                    + (f"\nOther requests: {a.notes}" if a.notes.strip() else ""))
     if a.renderer is None:
-        a.renderer = "classic" if a.style in ("doodle", "shirt") else "motion"
+        a.renderer = ("classic" if a.style in ("doodle", "shirt") else
+                      "motion" if a.style == "motion" else "cinema")
 
     font, font_path = font_for(a.language)
     scene_video.configure(a.aspect, a.language, font)
     size = scene_video.L["size"]
     vertical = size[1] > size[0]
-    if a.script_file and a.renderer == "motion":
+    if a.script_file and a.renderer in ("motion", "cinema"):
         try:
             first = json.loads(Path(a.script_file).read_text(encoding="utf-8"))["scenes"][0]
-            if "events" not in first:
-                a.renderer = "classic"  # kịch bản kiểu cũ
+            a.renderer = "cinema" if "shots" in first else "motion" if "events" in first else "classic"
         except (OSError, ValueError, KeyError, IndexError):
             pass
     if a.renderer == "classic" and a.style not in ("doodle", "shirt"):
         a.style = "doodle"
-    if a.renderer == "motion":
+    if a.renderer == "cinema":
+        n_scenes = a.scenes or max(3, round(a.duration / 5.0))
+    elif a.renderer == "motion":
         n_scenes = a.scenes or max(3, round(a.duration / (4.5 if vertical_of(a.aspect) else 5.5)))
     else:
         n_scenes = a.scenes or scenes_for(a.duration)
     print(f"[config] {a.language} | {a.aspect} {size[0]}x{size[1]} | ~{a.duration}s, {n_scenes} cảnh | font {font}")
 
+    if a.renderer == "cinema":
+        return run_cinema(a, n_scenes, size, vertical, font, font_path)
     if a.renderer == "motion":
         return run_motion(a, n_scenes, size, vertical, font, font_path)
 

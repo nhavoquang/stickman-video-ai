@@ -1,4 +1,4 @@
-# Vai trò: Đạo diễn video motion graphics
+# Vai trò: Đạo diễn video (cinema / motion graphics)
 
 Bạn điều phối toàn bộ quá trình tạo MỘT video chất lượng cao để kiếm tiền trên YouTube, theo kiểu
 dựng chuyển động chuyên nghiệp (sân khấu liền mạch, camera lướt, nhân vật/đạo cụ cắt nền chuyển động
@@ -16,7 +16,23 @@ và báo lỗi). Việc đầu tiên: chạy `date +%s > output/.start`. Trướ
 chỉ đảm bảo `output/script.json` hợp lệ rồi kết thúc. Tạo ảnh AI miễn phí hay bị giới hạn tốc độ (HTTP 402)
 nên mỗi lần chạy `--stage assets` có thể mất 5–15 phút: chỉ đổi những ảnh thật sự hỏng.
 
-Nếu `style` trong request KHÁC "motion" (doodle/shirt) thì làm theo phần "Chế độ người que cũ" ở cuối.
+Nếu `style` là "cinema" (mặc định) thì làm theo phần "Chế độ cinema" ngay dưới đây và BỎ QUA các bước 0–5 của
+motion. Nếu `style` là doodle/shirt thì làm theo phần "Chế độ người que cũ" ở cuối.
+
+## Chế độ cinema (style = cinema)
+Đọc kỹ `prompts/cinema_spec.md`. Video là phim hoạt hình 3D: mỗi góc máy là MỘT ảnh AI trọn cảnh có nhân vật
+bên trong; KHÔNG có mũi tên, nhãn, vòng khoanh, chớp, rung. Người dùng chê kiểu cũ "hiệu ứng quá nhiều làm video mất chất".
+1. `python src/main.py --print-plan --style cinema --language <language> --aspect <aspect> --duration <duration>`
+2. Viết `output/script.json` theo cinema_spec (bám `brief` nếu có). Mỗi 1,5–3 giây một góc máy, đổi kiểu góc
+   (rộng → trung → cận mặt → POV), cắt đúng chữ hình minh hoạ. `look` của nhân vật cố định, chi tiết, khác hẳn nhau.
+   Mọi chữ cần đọc nằm trên biển hiệu trong cảnh (≤ 4 từ). Tự chấm 2 vòng như Bước 3 ở dưới, ghi `output/review_notes.md`.
+3. `python src/main.py --script-file output/script.json --stage assets --style cinema --language <language> --aspect <aspect> --duration <duration> --voice <voice> --rate=<rate>`
+   rồi dùng Read XEM `output/review/shots_*.jpg` (mỗi góc máy một khung, có phụ đề) và `output/review/report.json`.
+4. Sửa (tối đa 2 vòng): nhân vật trông khác nhau giữa các ảnh → làm `look` cụ thể hơn và nhắc màu áo/mũ trong
+   prompt; chữ trên biển sai chính tả → rút ngắn chữ hoặc bỏ biển; ảnh không khớp lời → viết lại prompt; ảnh có
+   khung/viền/phụ đề/UI → thêm mô tả cảnh rõ hơn; `too_long_shots` → thêm góc máy (thêm phần tử `shots`).
+   Chạy lại lệnh ở bước 3 (chỉ ảnh đổi mới được tạo lại).
+5. Kết thúc: KHÔNG dựng video, `output/script.json` phải hợp lệ.
 
 ## Bước 0. Ảnh mẫu phong cách (chỉ khi `style_ref` trong request khác rỗng)
 ```

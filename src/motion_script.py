@@ -30,11 +30,12 @@ and a satisfying payoff. Write narration like natural speech; spell out symbols 
 Return only the JSON."""
 
 
-def generate(topic, plan, model="auto", notes=""):
+def generate(topic, plan, model="auto", notes="", prompt=None, cleaner=None):
     key = os.environ.get("GEMINI_API_KEY", "").strip()
     if not key:
         raise SystemExit("Thiếu GEMINI_API_KEY")
-    body = {"contents": [{"parts": [{"text": build_prompt(topic, plan, notes)}]}],
+    cleaner = cleaner or clean
+    body = {"contents": [{"parts": [{"text": prompt or build_prompt(topic, plan, notes)}]}],
             "generationConfig": {"responseMimeType": "application/json", "temperature": 0.85}}
     models = ([model] if model and model != "auto" else []) + available_models(key)
     models += ["gemini-flash-latest"]
@@ -53,9 +54,8 @@ def generate(topic, plan, model="auto", notes=""):
                     errors.append(f"{m}: HTTP {r.status_code} {r.text[:200]}")
                     break
                 text = r.json()["candidates"][0]["content"]["parts"][0]["text"]
-                film = clean(json.loads(text))
-                print(f"[motion-script] {m}: {len(film['scenes'])} cảnh, "
-                      f"{sum(len(s['events']) for s in film['scenes'])} sự kiện — {film['title']}")
+                film = cleaner(json.loads(text))
+                print(f"[script] {m}: {len(film['scenes'])} cảnh — {film['title']}")
                 return film
             except requests.Timeout:
                 errors.append(f"{m}: timeout")
