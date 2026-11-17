@@ -34,13 +34,13 @@ on:
         options: [nu, nam]
         default: nu
       style:
-        description: "Kiểu video: cinema = phim 3D cắt góc máy, không hiệu ứng (mặc định); motion = motion graphics; doodle/shirt = người que cũ"
+        description: "Kiểu video: film3d = phim hoạt hình 3D dựng bằng code (mặc định); cinema = ảnh AI; motion = motion graphics; doodle/shirt = người que cũ"
         type: choice
-        options: [cinema, motion, doodle, shirt]
-        default: cinema
+        options: [film3d, cinema, motion, doodle, shirt]
+        default: film3d
       rate:
         description: "Tốc độ đọc (vd -10%, +0%, +15%)"
-        default: "+5%"
+        default: "+15%"
       subtitles:
         description: "Phụ đề"
         type: choice
@@ -48,14 +48,6 @@ on:
         default: "on"
       brief:
         description: "Mô tả nội dung (tuỳ chọn, viết dài thoải mái): ý chính muốn nói, câu chuyện/nhân vật, các ý bắt buộc phải có, cái kết, điều cần tránh"
-        required: false
-        default: ""
-      notes:
-        description: "Yêu cầu thêm cho kịch bản (vd: hài hước, cho trẻ em, có số liệu) - có thể bỏ trống"
-        required: false
-        default: ""
-      style_ref:
-        description: "Ảnh mẫu phong cách (tuỳ chọn): tên thư mục trong style_refs/ hoặc link ảnh, cách nhau bởi dấu cách"
         required: false
         default: ""
 
@@ -73,12 +65,10 @@ jobs:
       ASPECT: ${{ inputs.aspect || '16:9' }}
       DURATION: ${{ inputs.duration || '60' }}
       VOICE: ${{ inputs.voice || 'nu' }}
-      STYLE: ${{ inputs.style || 'cinema' }}
-      RATE: ${{ inputs.rate || '+5%' }}
+      STYLE: ${{ inputs.style || 'film3d' }}
+      RATE: ${{ inputs.rate || '+15%' }}
       SUBTITLES: ${{ inputs.subtitles || 'on' }}
-      NOTES: ${{ inputs.notes || '' }}
       BRIEF: ${{ inputs.brief || '' }}
-      STYLE_REF: ${{ inputs.style_ref || '' }}
       POLLINATIONS_TOKEN: ${{ secrets.POLLINATIONS_TOKEN }}
     steps:
       - uses: actions/checkout@v4
@@ -90,12 +80,16 @@ jobs:
         timeout-minutes: 20
         run: bash ci/install_deps.sh
       - run: pip install -r requirements.txt
+      - name: Cài bộ dựng 3D (three.js + Chromium)
+        run: |
+          cd engine3d && npm ci --no-audit --no-fund
+          npm i -g playwright@1.49.1 && npx playwright install --with-deps chromium
       - name: Ghi yêu cầu
         run: |
           mkdir -p output
           python - <<'PY'
           import json, os, random
-          keys = ["topic", "language", "aspect", "duration", "voice", "style", "rate", "subtitles", "notes", "brief", "style_ref"]
+          keys = ["topic", "language", "aspect", "duration", "voice", "style", "rate", "subtitles", "brief"]
           req = {k: os.environ["INPUT_TOPIC" if k == "topic" else k.upper()] for k in keys}
           if not req["topic"].strip():  # chạy do commit: lấy ngẫu nhiên 1 chủ đề trong topics.txt
               topics = [t.strip() for t in open("topics.txt", encoding="utf-8") if t.strip() and not t.startswith("#")]
@@ -132,14 +126,14 @@ jobs:
           # tiến trình còn sót lại của bước Claude (nếu bị dừng vì hết giờ) có thể ghi đè file đang đọc
           pkill -f "src/main.py" || true
           COMMON=(--language "$LANGUAGE" --aspect "$ASPECT" --duration "$DURATION" --voice "$VOICE"
-                  --style "$STYLE" --rate="$RATE" --subtitles "$SUBTITLES" --style-ref="$STYLE_REF")
+                  --style "$STYLE" --rate="$RATE" --subtitles "$SUBTITLES")
           if [ -f output/script.json ] && python -c "import json;json.load(open('output/script.json'))"; then
             echo "Dùng kịch bản Claude đã tối ưu"
             python src/main.py --script-file output/script.json "${COMMON[@]}" \
-              || python src/main.py --topic "$TOPIC" --notes="$NOTES" --brief="$BRIEF" "${COMMON[@]}"
+              || python src/main.py --topic "$TOPIC" --brief="$BRIEF" "${COMMON[@]}"
           else
             echo "Không có kịch bản Claude, dùng Gemini"
-            python src/main.py --topic "$TOPIC" --notes="$NOTES" --brief="$BRIEF" "${COMMON[@]}"
+            python src/main.py --topic "$TOPIC" --brief="$BRIEF" "${COMMON[@]}"
           fi
 
       - name: Báo cáo kiểm tra video (QA)

@@ -78,3 +78,10 @@ Chọn `style = doodle/shirt` để dùng lại kiểu người que cũ.
 ## Đầu ra
 Mỗi lần chạy tạo artifact **youtube**: `video.mp4`, `thumbnail.jpg` (1280×720 thiết kế riêng), `title.txt`,
 `description.txt` (có hashtag), `tags.txt`, `metadata.json` — tải về là đăng lên YouTube được ngay.
+
+## Kiểu film3d (mặc định, 2026-11-16)
+Phim hoạt hình 3D dựng bằng code: `engine3d/` (three.js + Chromium/Playwright, WebGL phần mềm) dựng thế giới low-poly
+tô toon có viền mực, cỏ/hoa, bầu trời có mặt trời, sương, bóng đổ, mờ hậu cảnh khi quay cận, nhân vật đầu trứng
+thân que có biểu cảm; Claude viết kịch bản gồm thế giới 3D + danh sách góc máy + chuyển động (`prompts/film3d_spec.md`,
+ví dụ `examples/sample_film3d.json`). `src/film3d.py` đổi mốc theo từ sang giây, sinh phụ đề 1–2 chữ, dựng song song
+nhiều tiến trình rồi ghép giọng + nhạc. Tốc độ đọc mặc định +15%. Đã bỏ ô "Yêu cầu thêm" và "Ảnh mẫu phong cách".

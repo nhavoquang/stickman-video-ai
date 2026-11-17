@@ -3,7 +3,7 @@
 Bạn điều phối toàn bộ quá trình tạo MỘT video chất lượng cao để kiếm tiền trên YouTube, theo kiểu
 dựng chuyển động chuyên nghiệp (sân khấu liền mạch, camera lướt, nhân vật/đạo cụ cắt nền chuyển động
 khớp từng từ). Yêu cầu nằm trong `output/request.json` (topic, language, aspect, duration, voice, style,
-rate, subtitles, notes, brief). **`brief` là mô tả nội dung của người dùng: nếu có, kịch bản phải bám sát nó**
+rate, subtitles, brief). **`brief` là mô tả nội dung của người dùng: nếu có, kịch bản phải bám sát nó**
 (ý chính, câu chuyện/nhân vật, các ý bắt buộc, cái kết, điều cần tránh); chỉ tự sáng tạo phần brief không nói tới,
 và vẫn giữ đúng sự thật. Bạn KHÔNG commit, KHÔNG push, KHÔNG sửa code trong `src/`. Chỉ làm trong `output/`.
 
@@ -16,8 +16,25 @@ và báo lỗi). Việc đầu tiên: chạy `date +%s > output/.start`. Trướ
 chỉ đảm bảo `output/script.json` hợp lệ rồi kết thúc. Tạo ảnh AI miễn phí hay bị giới hạn tốc độ (HTTP 402)
 nên mỗi lần chạy `--stage assets` có thể mất 5–15 phút: chỉ đổi những ảnh thật sự hỏng.
 
-Nếu `style` là "cinema" (mặc định) thì làm theo phần "Chế độ cinema" ngay dưới đây và BỎ QUA các bước 0–5 của
-motion. Nếu `style` là doodle/shirt thì làm theo phần "Chế độ người que cũ" ở cuối.
+Nếu `style` là "film3d" (mặc định) thì làm theo phần "Chế độ film3d" ngay dưới đây; "cinema" thì theo "Chế độ
+cinema"; cả hai đều BỎ QUA các bước 0–5 của motion. Nếu `style` là doodle/shirt thì làm theo "Chế độ người que cũ" ở cuối.
+
+## Chế độ film3d (style = film3d) — phim hoạt hình 3D dựng bằng code
+Đọc kỹ `prompts/film3d_spec.md` và ví dụ `examples/sample_film3d.json`. Bạn vừa là biên kịch, vừa dựng bối cảnh 3D,
+vừa là người quay phim. Người dùng muốn video ĐẸP, CÓ CHIỀU SÂU, NHỊP ĐỀU như video mẫu ("The Instinct That Makes
+You Crash"): ~25–30 góc máy/phút, mỗi góc trôi chậm, góc thấp sát cỏ, flycam, cận mặt có mờ hậu cảnh, POV trong xe,
+chữ nằm trên biển hiệu, KHÔNG hiệu ứng đè hình.
+1. `python src/main.py --print-plan --style film3d --language <language> --aspect <aspect> --duration <duration>`
+2. Viết `output/script.json` (bám `brief` nếu có): câu chuyện + một thế giới 3D liền mạch (đặt đường, mốc chính,
+   nhà, cây, cỏ, mây, nhân vật một lần) + danh sách góc máy và chuyển động cho từng cảnh. Tự chấm kịch bản 2 vòng
+   (hook, công thức kể chuyện, nhịp, độ chính xác) và ghi `output/review_notes.md`.
+3. `python src/main.py --script-file output/script.json --stage assets --style film3d --language <language> --aspect <aspect> --duration <duration> --voice <voice> --rate=<rate>`
+   (tạo giọng đọc + ảnh tĩnh giữa mỗi góc máy, vài phút). Dùng Read XEM `output/review/shots_*.jpg` và đọc
+   `output/review/report.json`.
+4. Sửa tối đa 3 vòng, mỗi vòng chạy lại bước 3: máy quay nằm trong vật/nhìn thấy khoảng trống, khung trống trơn
+   (thêm cỏ/cây/nhà/mây vào chỗ được quay), nhân vật bị che hoặc quá nhỏ, mặt quay đi (dùng `lookCam`/`rot`), biển chữ
+   không đọc được, hai góc máy liền nhau giống nhau, ánh sáng không hợp tâm trạng, `too_long_shots` (thêm góc máy).
+5. Kết thúc: KHÔNG dựng video (bước sau tự dựng, mất 20–40 phút). `output/script.json` phải hợp lệ.
 
 ## Chế độ cinema (style = cinema)
 Đọc kỹ `prompts/cinema_spec.md`. Video là phim hoạt hình 3D: mỗi góc máy là MỘT ảnh AI trọn cảnh có nhân vật

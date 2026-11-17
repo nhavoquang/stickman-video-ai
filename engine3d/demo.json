@@ -1,0 +1,386 @@
+{
+ "width": 1080,
+ "height": 1920,
+ "fps": 30,
+ "light": "sunny",
+ "world": {
+  "seed": 5,
+  "objects": [
+   {
+    "type": "ground",
+    "color": 8172354
+   },
+   {
+    "type": "field",
+    "pos": [
+     -215,
+     0,
+     0
+    ],
+    "w": 400
+   },
+   {
+    "type": "field",
+    "pos": [
+     215,
+     0,
+     0
+    ],
+    "w": 400,
+    "colors": [
+     9484856,
+     8040487
+    ]
+   },
+   {
+    "type": "road"
+   },
+   {
+    "type": "grass",
+    "pos": [
+     11,
+     0,
+     -14
+    ],
+    "w": 14,
+    "d": 50,
+    "density": 60,
+    "flowers": 0.03
+   },
+   {
+    "type": "grass",
+    "pos": [
+     -11,
+     0,
+     -14
+    ],
+    "w": 14,
+    "d": 50,
+    "density": 60,
+    "flowers": 0.02
+   },
+   {
+    "type": "fence",
+    "pos": [
+     17.5,
+     0,
+     -14
+    ],
+    "len": 60
+   },
+   {
+    "type": "tree",
+    "id": "oak",
+    "pos": [
+     8.5,
+     0,
+     -22
+    ],
+    "size": 1.25
+   },
+   {
+    "type": "tree",
+    "pos": [
+     -70,
+     0,
+     -320
+    ],
+    "size": 1.1
+   },
+   {
+    "type": "tree",
+    "kind": "pine",
+    "pos": [
+     60,
+     0,
+     -420
+    ],
+    "size": 1.4
+   },
+   {
+    "type": "rock",
+    "pos": [
+     10,
+     0,
+     -6
+    ],
+    "size": 0.6
+   },
+   {
+    "type": "marquee",
+    "pos": [
+     6.2,
+     0,
+     -17
+    ],
+    "rot": -25,
+    "text": "DON'T\nHIT\nTHIS\nTREE"
+   },
+   {
+    "type": "sign",
+    "pos": [
+     -6.5,
+     0,
+     -9
+    ],
+    "rot": 25,
+    "text": "DAYS SINCE\nLAST CRASH\n7"
+   },
+   {
+    "type": "chair",
+    "pos": [
+     12,
+     0,
+     -12
+    ],
+    "rot": -60
+   },
+   {
+    "type": "character",
+    "id": "farmer",
+    "pos": [
+     10.5,
+     0,
+     -12
+    ],
+    "hat": "cap",
+    "shirt": 2792847,
+    "expr": "smug"
+   },
+   {
+    "type": "character",
+    "id": "sheriff",
+    "pos": [
+     -30,
+     0,
+     30
+    ],
+    "hat": "sheriff",
+    "shirt": 13226592,
+    "pants": 3355443,
+    "mustache": true,
+    "glasses": true,
+    "expr": "angry"
+   },
+   {
+    "type": "police_car",
+    "id": "cruiser",
+    "pos": [
+     1.8,
+     0,
+     150
+    ],
+    "rot": 180
+   },
+   {
+    "type": "truck",
+    "pos": [
+     -9,
+     0,
+     6
+    ],
+    "rot": 160,
+    "text": "TOWING\n24 HR"
+   },
+   {
+    "type": "house",
+    "pos": [
+     -40,
+     0,
+     -60
+    ],
+    "rot": 30
+   },
+   {
+    "type": "cloud",
+    "pos": [
+     -80,
+     90,
+     -400
+    ]
+   },
+   {
+    "type": "cloud",
+    "pos": [
+     140,
+     120,
+     -520
+    ],
+    "size": 1.3
+   },
+   {
+    "type": "cloud",
+    "pos": [
+     20,
+     80,
+     -260
+    ]
+   },
+   {
+    "type": "bush",
+    "pos": [
+     14,
+     0,
+     -17
+    ]
+   }
+  ]
+ },
+ "anim": {
+  "cruiser": {
+   "pos": [
+    [
+     2.0,
+     1.8,
+     0,
+     150
+    ],
+    [
+     6.0,
+     1.8,
+     0,
+     -60
+    ]
+   ],
+   "smooth": false
+  },
+  "farmer": {
+   "lookCam": true,
+   "act": [
+    [
+     0,
+     "idle"
+    ],
+    [
+     1.2,
+     "point"
+    ],
+    [
+     4.6,
+     "cheer"
+    ]
+   ],
+   "expr": [
+    [
+     0,
+     "smug"
+    ],
+    [
+     4.6,
+     "laugh"
+    ]
+   ]
+  }
+ },
+ "captions": [
+  [
+   0,
+   0.8,
+   "Every week"
+  ],
+  [
+   0.8,
+   1.6,
+   "a car"
+  ],
+  [
+   1.6,
+   2.5,
+   "hits this tree."
+  ],
+  [
+   2.5,
+   3.5,
+   "On a road"
+  ],
+  [
+   3.5,
+   5.0,
+   "this straight."
+  ],
+  [
+   5.0,
+   6.2,
+   "And Earl"
+  ],
+  [
+   6.2,
+   7.5,
+   "loves it."
+  ]
+ ],
+ "shots": [
+  {
+   "t0": 0,
+   "t1": 2.5,
+   "cam": {
+    "from": [
+     13.8,
+     1.1,
+     -5.5
+    ],
+    "to": [
+     13.3,
+     1.3,
+     -7.2
+    ],
+    "look": [
+     10.5,
+     2.4,
+     -12
+    ],
+    "fov": 36
+   }
+  },
+  {
+   "t0": 2.5,
+   "t1": 5.0,
+   "cam": {
+    "from": [
+     0,
+     60,
+     70
+    ],
+    "to": [
+     0,
+     52,
+     30
+    ],
+    "look": [
+     0,
+     0,
+     -50
+    ],
+    "lookTo": [
+     0,
+     0,
+     -80
+    ],
+    "fov": 40
+   }
+  },
+  {
+   "t0": 5.0,
+   "t1": 7.5,
+   "light": "golden",
+   "cam": {
+    "from": [
+     3.5,
+     1.2,
+     -2
+    ],
+    "to": [
+     4.5,
+     1.4,
+     -4.5
+    ],
+    "look": [
+     10,
+     3.0,
+     -16
+    ],
+    "fov": 50
+   }
+  }
+ ]
+}
